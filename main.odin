@@ -66,23 +66,31 @@ repeat :: proc(p: ^Pattern, rule: rune) -> ^Pattern {
 	return p
 }
 
-concat :: proc(base: ^Pattern, join: ^Pattern) -> ^Pattern {
-	append(&base.code, ..join.code[:])
-	return base
+concat :: proc(patterns: ..^Pattern) -> (p: ^Pattern) {
+	p = make_pattern()
+	for join in patterns {
+		append(&p.code, ..join.code[:])
+	}
+	return
 }
 
 main :: proc() {
 	space := repeat(set(" \t\n"), '*')
-	digit := repeat(range("09"), '*')
-	number := concat(digit, space)
-	add := concat(pattern("+"), space)
-	add_number := repeat(concat(add, number), '*')
-	expr := concat(number, add_number)
+	defer delete(space.code)
 
-	fmt.println(digit)
+	digit := repeat(range("09"), '*')
 	defer delete(digit.code)
 
+	add := concat(pattern("+"), space)
+	defer delete(add.code)
+
+	number := concat(digit, space)
+	defer delete(number.code)
+
+	expr := concat(number, repeat(concat(add, number), '*'))
+	defer delete(expr.code)
+
 	subject := "120 + 23"
-	result := match(digit, subject)
+	result := match(expr, subject)
 	fmt.println(result, subject[:result])
 }
