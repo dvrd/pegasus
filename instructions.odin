@@ -92,7 +92,7 @@ Fail :: struct {}
 // Set consumes the next byte of input if it is in the set of chars defined
 // by bits.
 Set :: struct {
-	bits: [4]u64,
+	chars: Charset,
 }
 
 // Any consumes the next N bytes and fails if that is not possible.
@@ -148,14 +148,14 @@ TestCharNoChoice :: struct {
 // to Lbl and the subject position from before consumption is pushed to the
 // stack.
 TestSet :: struct {
-	chars: Set,
+	chars: Charset,
 	lbl:   Label,
 }
 
 // TestSetNoChoice is the same as TestSet but no backtrack entry is pushed to
 // the stack.
 TestSetNoChoice :: struct {
-	chars: Set,
+	chars: Charset,
 	lbl:   Label,
 }
 
@@ -281,7 +281,7 @@ string_from_fail :: proc(i: ^Fail) -> string {
 }
 
 string_from_set :: proc(i: ^Set) -> string {
-	return fmt.sbprintf(&strings.Builder{}, "Set %v", i.bits)
+	return fmt.sbprintf(&strings.Builder{}, "Set %v", i.chars)
 }
 
 string_from_any :: proc(i: ^Any) -> string {
