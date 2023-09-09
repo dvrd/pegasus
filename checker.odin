@@ -1,6 +1,6 @@
 package pegasus
 
-import "core:io"
+import "core:strings"
 
 // A Checker is used so the user can perform additional custom validation of
 // parse results. For example, you might want to parse only 8-bit integers by
@@ -52,7 +52,7 @@ back_reference_check :: proc(
 	case .RefUse:
 		back := r.symbols[id]
 		buf := make([]byte, len(back))
-		n, _ := io.read_at(src.r, buf, i64(input_pos(src)))
+		n, _ := strings.reader_read_at(&src.r, buf, i64(input_pos(src)))
 		if n == len(buf) && string(buf) == back {
 			return n
 		}
