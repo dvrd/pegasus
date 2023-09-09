@@ -238,7 +238,9 @@ CheckBegin :: struct {
 
 // CheckEnd records the end position of a checker and applies the checker to
 // determine if the match should fail.
-CheckEnd :: struct {} // checker: Check,
+CheckEnd :: struct {
+	checker: proc(r: ^BackReference, b: []byte, src: ^Input, id: int, flag: RefKind) -> int,
+}
 
 
 // Error logs an error message at the current position.
@@ -247,33 +249,27 @@ Error :: struct {
 }
 
 string_from_label :: proc(i: ^Label) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "L%v", i.id)
+	return fmt.sbprintf(&strings.Builder{}, "L%v", i.id)
 }
 
 string_from_char :: proc(i: ^Char) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Char %v", i.byte)
+	return fmt.sbprintf(&strings.Builder{}, "Char %v", i.byte)
 }
 
 string_from_jump :: proc(i: ^Jump) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Jump %v", i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "Jump %v", i.lbl)
 }
 
 string_from_choice :: proc(i: ^Choice) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Choice %v", i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "Choice %v", i.lbl)
 }
 
 string_from_call :: proc(i: ^Call) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Call %v", i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "Call %v", i.lbl)
 }
 
 string_from_commit :: proc(i: ^Commit) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Commit %v", i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "Commit %v", i.lbl)
 }
 
 string_from_return :: proc(i: ^Return) -> string {
@@ -285,28 +281,23 @@ string_from_fail :: proc(i: ^Fail) -> string {
 }
 
 string_from_set :: proc(i: ^Set) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Set %v", i.bits)
+	return fmt.sbprintf(&strings.Builder{}, "Set %v", i.bits)
 }
 
 string_from_any :: proc(i: ^Any) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Any %v", i.n)
+	return fmt.sbprintf(&strings.Builder{}, "Any %v", i.n)
 }
 
 string_from_partial_commit :: proc(i: ^PartialCommit) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "PartialCommit %v", i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "PartialCommit %v", i.lbl)
 }
 
 string_from_span :: proc(i: ^Span) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "Span %v", i.bits)
+	return fmt.sbprintf(&strings.Builder{}, "Span %v", i.bits)
 }
 
 string_from_back_commit :: proc(i: ^BackCommit) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "BackCommit %v", i)
+	return fmt.sbprintf(&strings.Builder{}, "BackCommit %v", i)
 }
 
 string_from_fail_twice :: proc(i: ^FailTwice) -> string {
@@ -314,39 +305,30 @@ string_from_fail_twice :: proc(i: ^FailTwice) -> string {
 }
 
 string_from_test_char :: proc(i: ^TestChar) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "TestChar %v %v", i.byte, i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "TestChar %v %v", i.byte, i.lbl)
 }
 
 string_from_test_char_no_choice :: proc(i: ^TestCharNoChoice) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "TestCharNoChoice %v %v", i.byte, i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "TestCharNoChoice %v %v", i.byte, i.lbl)
 }
 
 string_from_test_set :: proc(i: ^TestSet) -> string {
-	b := strings.Builder{}
-	return fmt.sbprintf(&b, "TestSet %v %v", i.chars, i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "TestSet %v %v", i.chars, i.lbl)
 }
 
 string_from_test_set_no_choice :: proc(i: ^TestSetNoChoice) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "TestSetNoChoice %v %v", i.chars, i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "TestSetNoChoice %v %v", i.chars, i.lbl)
 }
 
 string_from_test_any :: proc(i: ^TestAny) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "TestAny %v %v", i.n, i.lbl)
+	return fmt.sbprintf(&strings.Builder{}, "TestAny %v %v", i.n, i.lbl)
 }
 
 string_from_end :: proc(i: ^End) -> string {
-	b := strings.Builder
-	result: string
-	if i.Fail {
-		result = "Fail"
-	} else {
-		result = "Success"
+	if i.fail {
+		return "End Fail"
 	}
-	return fmt.sbprintf(&b, "End %s", result)
+	return "End Success"
 }
 
 string_from_nop :: proc(i: Nop) -> string {
@@ -358,13 +340,11 @@ string_from_check_begin :: proc(i: CheckBegin) -> string {
 }
 
 string_from_check_end :: proc(i: CheckEnd) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "CheckEnd %v", i.checker)
+	return fmt.sbprintf(&strings.Builder{}, "CheckEnd %v", i)
 }
 
 string_from_memo_open :: proc(i: MemoOpen) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "MemoOpen %v %v", i.lbl, i.id)
+	return fmt.sbprintf(&strings.Builder{}, "MemoOpen %v %v", i.lbl, i.id)
 }
 
 string_from_memo_close :: proc(i: MemoClose) -> string {
@@ -372,8 +352,7 @@ string_from_memo_close :: proc(i: MemoClose) -> string {
 }
 
 string_from_memo_tree_open :: proc(i: MemoTreeOpen) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "MemoTreeOpen %v %v", i.lbl, i.id)
+	return fmt.sbprintf(&strings.Builder{}, "MemoTreeOpen %v %v", i.lbl, i.id)
 }
 
 string_from_memo_tree_insert :: proc(i: MemoTreeInsert) -> string {
@@ -385,18 +364,15 @@ string_from_memo_tree :: proc(i: MemoTree) -> string {
 }
 
 string_from_memo_tree_close :: proc(i: MemoTreeClose) -> string {
-	b := strings.Builder
-	return fmt.sbprintf("MemoTreeClose %v", i.id)
+	return fmt.sbprintf(&strings.Builder{}, "MemoTreeClose %v", i.id)
 }
 
 string_from_capture_begin :: proc(i: CaptureBegin) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "CaptureBegin %v", i.id)
+	return fmt.sbprintf(&strings.Builder{}, "CaptureBegin %v", i.id)
 }
 
 string_from_capture_late :: proc(i: CaptureLate) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "CaptureLate %v %v", i.back, i.id)
+	return fmt.sbprintf(&strings.Builder{}, "CaptureLate %v %v", i.back, i.id)
 }
 
 string_from_capture_end :: proc(i: CaptureEnd) -> string {
@@ -404,13 +380,11 @@ string_from_capture_end :: proc(i: CaptureEnd) -> string {
 }
 
 string_from_capture_full :: proc(i: CaptureFull) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "CaptureFull %v %v", i.back, i.id)
+	return fmt.sbprintf(&strings.Builder{}, "CaptureFull %v %v", i.back, i.id)
 }
 
 string_from_error :: proc(i: Error) -> string {
-	b := strings.Builder
-	return fmt.sbprintf(&b, "CaptureFull %s", i.message)
+	return fmt.sbprintf(&strings.Builder{}, "CaptureFull %s", i.message)
 }
 
 string_from_empty :: proc(i: Empty) -> string {
@@ -419,22 +393,22 @@ string_from_empty :: proc(i: Empty) -> string {
 
 // String returns the string representation of the program.
 string_from_program :: proc(p: Program) -> string {
-	s := strings.Builder
+	s := strings.Builder{}
 	last: Instruction
-	for i in p {
-		switch t in i {
+	for inst in p {
+		switch t in inst {
 		case Nop:
 			continue
 		case Label:
 			_, ok := last.(Label);if ok {
-				s = fmt.sbprintf(&s, "\n%v:", insn)
+				s = fmt.sbprintf(&s, "\n%v:", inst)
 			} else {
-				s = fmt.sbprintf(&s, "%v:", insn)
+				s = fmt.sbprintf(&s, "%v:", inst)
 			}
 		case:
-			s = fmt.Sprintf("\t%v\n", insn)
+			s = fmt.Sprintf("\t%v\n", inst)
 		}
-		last = insn
+		last = inst
 	}
 	s = strings.concatenate({s, "\n"})
 	return s
