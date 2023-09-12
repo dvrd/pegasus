@@ -1,0 +1,37 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  COLLECTION: -collection:pegasus=pegasus
+
+tasks:
+  run:
+    cmds:
+      - odin run .
+  build:
+    cmds:
+      - odin build . -o:speed -out:bin/pegasus
+    sources:
+      - ./**/*.odin
+    generates:
+      - ./bin/pegasus
+    aliases:
+      - b
+    silent: true
+  test:
+    cmds:
+      - odin test {{.CLI_ARGS}} {{.COLLECTION}}
+    aliases:
+      - t
+    silent: true
+  clean:
+    cmds:
+      - rm -rf ./bin
+    aliases:
+      - c
+    silent: true
+  default:
+    cmds:
+      - task: run
+    silent: true

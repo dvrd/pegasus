@@ -1,67 +1,13 @@
-package pegasus
+package vm
 
 import "core:builtin"
 import "core:bytes"
 import "core:fmt"
+import inst "pegasus:instructions"
 
-Opcode :: enum {
-	Any, /* if no char, fail */
-	Char, /* if char != aux, fail */
-	Set, /* if char not in buff, fail */
-	Ret, /* return from a rule */
-	End, /* end of pattern */
-	EndFail, /* end match in failure */
-	Choice, /* stack a choice; next fail will jump to 'offset' */
-	Jmp, /* jump to 'offset' */
-	Call, /* call rule at 'offset' */
-	Commit, /* pop choice and jump to 'offset' */
-	Fail, /* go back to saved state on choice and jump to saved offset */
-}
-
-Offset :: int
-N :: int
-Buffer :: [dynamic]rune
-
-Instruction :: struct {
-	kind: Opcode,
-	data: union {
-		rune,
-		int,
-		Buffer,
-		^Instruction,
-	},
-}
-
-Instructions :: [dynamic]Instruction
-
-Backtrack :: struct {
-	ip: int,
-	sp: int,
-}
-
-Return :: int
-
-Entry :: union {
-	Backtrack,
-	Return,
-}
-
-Pattern :: struct {
-	code: [dynamic]Instruction,
-}
-
-make_pattern :: proc() -> (p: ^Pattern) {
-	p = new(Pattern)
-	p.code = make(Instructions)
-	return
-}
-
-anger: rune : '😡'
-sadness: rune : '😔'
-happiness: rune : '😬'
-failure := Instruction{.Fail, sadness}
-end_failure := Instruction{.EndFail, anger}
-end := Instruction{.End, happiness}
+failure := inst.Fail{}
+end_failure := inst.End{true}
+end := inst.End{false}
 
 match :: proc(p: ^Pattern, sub: string) -> (sp: int, ok: bool) #optional_ok {
 	append(&p.code, end)

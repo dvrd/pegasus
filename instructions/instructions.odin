@@ -1,7 +1,9 @@
-package pegasus
+package instructions
 
 import "core:fmt"
 import "core:strings"
+import "pegasus:charset"
+import "pegasus:input"
 
 uniqId: int
 
@@ -41,6 +43,27 @@ Instruction :: union {
 	CheckBegin,
 	CheckEnd,
 	Error,
+	JumpType,
+	OpenCall,
+}
+
+Program :: [dynamic]Instruction
+ProgramSlice :: []Instruction
+
+JumpType :: union {
+	Jump,
+	Choice,
+	Call,
+	Commit,
+	PartialCommit,
+	BackCommit,
+	TestChar,
+	TestCharNoChoice,
+	TestSet,
+	TestSetNoChoice,
+	TestAny,
+	MemoOpen,
+	MemoTreeOpen,
 }
 
 // Label is used for marking a location in the instruction code with
@@ -63,24 +86,24 @@ Char :: struct {
 
 // Jump jumps to Lbl.
 Jump :: struct {
-	lbl: int,
+	lbl: Label,
 }
 
 // Choice pushes Lbl to the stack and if there is a failure the label will
 // be popped from the stack and jumped to.
 Choice :: struct {
-	lbl: int,
+	lbl: Label,
 }
 
 // Call pushes the next instruction to the stack as a return address and jumps
 // to Lbl.
 Call :: struct {
-	lbl: int,
+	lbl: Label,
 }
 
 // Commit jumps to Lbl and removes the top entry from the stack
 Commit :: struct {
-	lbl: int,
+	lbl: Label,
 }
 
 // Return pops a return address off the stack and jumps to it.
@@ -92,7 +115,7 @@ Fail :: struct {}
 // Set consumes the next byte of input if it is in the set of chars defined
 // by bits.
 Set :: struct {
-	chars: Charset,
+	chars: ^charset.Set,
 }
 
 // Any consumes the next N bytes and fails if that is not possible.
@@ -103,19 +126,19 @@ Any :: struct {
 // PartialCommit modifies the backtrack entry on the top of the stack to
 // point to the current subject offset, and jumps to Lbl.
 PartialCommit :: struct {
-	lbl: int,
+	lbl: Label,
 }
 
 // Span consumes zero or more bytes in the set bits. This instruction
 // never fails.
 Span :: struct {
-	bits: [4]u64,
+	chars: ^charset.Set,
 }
 
 // BackCommit pops a backtrack entry off the stack, goes to the subject
 // position in the entry, and jumps to Lbl.
 BackCommit :: struct {
-	lbl: int,
+	lbl: Label,
 }
 
 // FailTwice pops an entry off the stack and sets the instruction pointer to
@@ -148,14 +171,14 @@ TestCharNoChoice :: struct {
 // to Lbl and the subject position from before consumption is pushed to the
 // stack.
 TestSet :: struct {
-	chars: Charset,
+	chars: charset.Set,
 	lbl:   Label,
 }
 
 // TestSetNoChoice is the same as TestSet but no backtrack entry is pushed to
 // the stack.
 TestSetNoChoice :: struct {
-	chars: Charset,
+	chars: ^charset.Set,
 	lbl:   Label,
 }
 
@@ -239,13 +262,20 @@ CheckBegin :: struct {
 // CheckEnd records the end position of a checker and applies the checker to
 // determine if the match should fail.
 CheckEnd :: struct {
-	checker: proc(r: ^BackReference, b: []byte, src: ^Input, id: int, flag: RefKind) -> int,
+	checker: Checker,
 }
 
 
 // Error logs an error message at the current position.
 Error :: struct {
 	message: string,
+}
+
+// OpenCall is a dummy instruction for resolving recursive function calls in
+// grammars.
+OpenCall :: struct {
+	// Nop
+	name: string,
 }
 
 string_from_label :: proc(i: ^Label) -> string {
@@ -293,7 +323,7 @@ string_from_partial_commit :: proc(i: ^PartialCommit) -> string {
 }
 
 string_from_span :: proc(i: ^Span) -> string {
-	return fmt.sbprintf(&strings.Builder{}, "Span %v", i.bits)
+	return fmt.sbprintf(&strings.Builder{}, "Span %v", i.chars)
 }
 
 string_from_back_commit :: proc(i: ^BackCommit) -> string {
@@ -309,7 +339,12 @@ string_from_test_char :: proc(i: ^TestChar) -> string {
 }
 
 string_from_test_char_no_choice :: proc(i: ^TestCharNoChoice) -> string {
-	return fmt.sbprintf(&strings.Builder{}, "TestCharNoChoice %v %v", i.byte, i.lbl)
+	return fmt.sbprintf(
+		&strings.Builder{},
+		"TestCharNoChoice %v %v",
+		i.byte,
+		i.lbl,
+	)
 }
 
 string_from_test_set :: proc(i: ^TestSet) -> string {
@@ -317,7 +352,12 @@ string_from_test_set :: proc(i: ^TestSet) -> string {
 }
 
 string_from_test_set_no_choice :: proc(i: ^TestSetNoChoice) -> string {
-	return fmt.sbprintf(&strings.Builder{}, "TestSetNoChoice %v %v", i.chars, i.lbl)
+	return fmt.sbprintf(
+		&strings.Builder{},
+		"TestSetNoChoice %v %v",
+		i.chars,
+		i.lbl,
+	)
 }
 
 string_from_test_any :: proc(i: ^TestAny) -> string {
@@ -391,22 +431,26 @@ string_from_empty :: proc(i: Empty) -> string {
 	return "Empty"
 }
 
+string_from_open_call :: proc(i: OpenCall) -> string {
+	return fmt.sbprintf(&strings.Builder{}, "OpenCall %v", i.name)
+}
+
 // String returns the string representation of the program.
 string_from_program :: proc(p: Program) -> string {
-	s := strings.Builder{}
+	s: string
 	last: Instruction
 	for inst in p {
-		switch t in inst {
+		#partial switch t in inst {
 		case Nop:
 			continue
 		case Label:
 			_, ok := last.(Label);if ok {
-				s = fmt.sbprintf(&s, "\n%v:", inst)
+				s = fmt.sbprintf(&strings.Builder{}, "\n%v:", inst)
 			} else {
-				s = fmt.sbprintf(&s, "%v:", inst)
+				s = fmt.sbprintf(&strings.Builder{}, "%v:", inst)
 			}
 		case:
-			s = fmt.Sprintf("\t%v\n", inst)
+			s = fmt.sbprintf(&strings.Builder{}, "\t%v\n", inst)
 		}
 		last = inst
 	}
@@ -414,7 +458,7 @@ string_from_program :: proc(p: Program) -> string {
 	return s
 }
 
-strings_from :: proc {
+to_string :: proc {
 	string_from_label,
 	string_from_char,
 	string_from_jump,
