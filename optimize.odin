@@ -1,7 +1,6 @@
-package pattern
+package pegasus
 
-import "pegasus:charset"
-import inst "pegasus:instructions"
+import "charset"
 
 // Nodes with trees larger than this size will not be inlined.
 InlineThreshold :: 100
@@ -35,7 +34,7 @@ get_pattern :: proc(p: Pattern) -> Pattern {
 		// if possible.
 		set, ok := combine(l, r);if ok {
 			np := new(ClassNode)
-			np.chars = &set
+			np.chars = set
 			return p
 		}
 	case ^OptionalNode:
@@ -69,8 +68,7 @@ get_pattern :: proc(p: Pattern) -> Pattern {
 			if len(lt.str) != 1 {
 				return p
 			}
-			chars := charset.new([]byte{lt.str[0]})
-			set = &chars
+			set = charset.new_charset([]byte{lt.str[0]})
 		case ^ClassNode:
 			set = lt.chars
 		case:
@@ -81,20 +79,20 @@ get_pattern :: proc(p: Pattern) -> Pattern {
 		case ^DotNode:
 			if rt.n == 1 {
 				np := new(ClassNode)
-				chars := charset.complement(set^)
-				np.chars = &chars
+				np.chars = charset.complement(set)
 				return np
 			}
 		case ^ClassNode:
 			np := new(ClassNode)
-			chars := charset.sub(rt.chars^, set^)
-			np.chars = &chars
+			np.chars = charset.sub(rt.chars, set)
 			return np
 		case ^LiteralNode:
 			if len(rt.str) == 1 {
 				np := new(ClassNode)
-				chars := charset.sub(charset.new([]byte{rt.str[0]}), set^)
-				np.chars = &chars
+				np.chars = charset.sub(
+					charset.new_charset([]byte{rt.str[0]}),
+					set,
+				)
 				return np
 			}
 		}
@@ -170,8 +168,8 @@ grammar_node_inline :: proc(p: ^GrammarNode) -> bool {
 
 // If the bytes matched by p1 and p2 can be matched by a single charset, then
 // that single combined charset is returned.
-combine :: proc(p1: Pattern, p2: Pattern) -> (charset.Set, bool) {
-	set: charset.Set
+combine :: proc(p1: Pattern, p2: Pattern) -> (^charset.Set, bool) {
+	set: ^charset.Set
 	#partial switch t1 in p1 {
 	case ^LiteralNode:
 		if len(t1.str) != 1 {
@@ -179,51 +177,59 @@ combine :: proc(p1: Pattern, p2: Pattern) -> (charset.Set, bool) {
 		}
 		#partial switch t2 in p2 {
 		case ^ClassNode:
-			return charset.add(t2.chars^, charset.new([]byte{t1.str[0]})), true
+			return charset.add(
+					t2.chars,
+					charset.new_charset([]byte{t1.str[0]}),
+				),
+				true
 		case ^LiteralNode:
 			if len(t2.str) != 1 {
 				return set, false
 			}
-			return charset.new([]byte{t1.str[0], t2.str[0]}), true
+			return charset.new_charset([]byte{t1.str[0], t2.str[0]}), true
 		}
 	case ^ClassNode:
 		#partial switch t2 in p2 {
 		case ^ClassNode:
-			return charset.add(t2.chars^, t1.chars^), true
+			return charset.add(t2.chars, t1.chars), true
 		case ^LiteralNode:
 			if len(t2.str) != 1 {
 				return set, false
 			}
-			return charset.add(t1.chars^, charset.new([]byte{t2.str[0]})), true
+			return charset.add(
+					t1.chars,
+					charset.new_charset([]byte{t2.str[0]}),
+				),
+				true
 		}
 	}
 	return set, false
 }
 
-// Returns the next instruction in p, skipping labels and nops.
-// If false is returned, there is no next instruction.
-next_insn :: proc(p: inst.ProgramSlice) -> (inst.Instruction, bool) {
+// Returns the next uction in p, skipping labels and nops.
+// If false is returned, there is no next uction.
+next_insn :: proc(p: ProgramSlice) -> (Instruction, bool) {
 	for i := 0; i < len(p); i += 1 {
 		#partial switch t in p[i] {
-		case inst.Label, inst.Nop:
+		case Label, Nop:
 			continue
 		case:
 			return p[i], true
 		}
 	}
 
-	return inst.Nop{}, false
+	return Nop{}, false
 }
 
-// Returns the index of the next instruction and if there was a label before
+// Returns the index of the next uction and if there was a label before
 // it.
-next_insn_label :: proc(p: inst.ProgramSlice) -> (int, bool) {
+next_insn_label :: proc(p: ProgramSlice) -> (int, bool) {
 	had_label := false
 	for i := 0; i < len(p); i += 1 {
 		#partial switch t in p[i] {
-		case inst.Nop:
+		case Nop:
 			continue
-		case inst.Label:
+		case Label:
 			had_label = true
 		case:
 			return i, had_label
@@ -235,13 +241,13 @@ next_insn_label :: proc(p: inst.ProgramSlice) -> (int, bool) {
 
 // Optimize performs some optimization passes on the code in p. In particular
 // it performs head-fail optimization and jump replacement.
-optimize :: proc(p: inst.Program) {
+optimize :: proc(p: ^Program) {
 	// map from label to index in code
-	labels := make(map[inst.Label]int)
+	labels := make(map[Label]int)
 	i := 0
 	for insn in p {
 		#partial switch l in insn {
-		case inst.Label:
+		case Label:
 			labels[l] = i
 		}
 		i += 1
@@ -249,32 +255,33 @@ optimize :: proc(p: inst.Program) {
 
 	i = 0
 	for insn in p {
-		// head-fail optimization: if we find a choice instruction immediately
+		// head-fail optimization: if we find a choice uction immediately
 		// followed (no label) by Char/Set/Any, we can replace with the
-		// dedicated instruction TestChar/TestSet/TestAny.
-		ch, ok := insn.(inst.Choice);if ok && i < len(p) - 1 {
+		// dedicated uction TestChar/TestSet/TestAny.
+		ch, ok := insn.(Choice);if ok && i < len(p) - 1 {
 			next := p[i + 1]
 			#partial switch t in next {
-			case inst.Char:
-				p[i] = inst.TestChar{inst.Char{rune(t.byte)}, ch.lbl}
-				p[i + 1] = inst.Nop{}
-			case inst.Set:
-				p[i] = inst.TestSet{t.chars^, ch.lbl}
-				p[i + 1] = inst.Nop{}
-			case inst.Any:
-				p[i] = inst.TestAny{inst.Any{t.n}, ch.lbl}
-				p[i + 1] = inst.Nop{}
+			case Char:
+				p[i] = TestChar{rune(t.byte), ch.lbl}
+				p[i + 1] = Nop{}
+			case Set:
+				p[i] = TestSet{t.chars^, ch.lbl}
+				p[i + 1] = Nop{}
+			case Any:
+				p[i] = TestAny{t.n, ch.lbl}
+				p[i + 1] = Nop{}
 			}
 		}
 
 		// jump optimization: if we find a jump to another control flow
-		// instruction, we can replace the current jump directly with the
-		// target instruction.
-		if j, ok := insn.(inst.Jump); ok {
-			next, ok := next_insn(p[labels[j.lbl]:])
-			if ok {
+		// uction, we can replace the current jump directly with the
+		// target uction.
+		j: Jump
+		j, ok = insn.(Jump);if ok {
+			next: Instruction
+			next, ok = next_insn(p[labels[j.lbl]:]);if ok {
 				#partial switch t in next {
-				case inst.PartialCommit, inst.BackCommit, inst.Commit, inst.Jump, inst.Return, inst.Fail, inst.FailTwice, inst.End:
+				case PartialCommit, BackCommit, Commit, Jump, Return, Fail, FailTwice, End:
 					p[i] = next
 				}
 			}

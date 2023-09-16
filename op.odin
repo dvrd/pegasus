@@ -1,6 +1,6 @@
-package vm
+package pegasus
 
-import inst "pegasus:instructions"
+import "core:fmt"
 
 Opcode :: enum {
 	Char,
@@ -78,20 +78,20 @@ szMemoOpen :: 6
 szMemoTreeOpen :: 6
 
 // returns the size in bytes of the encoded version of this instruction
-instruction_size :: proc(i: inst.Instruction) -> uint {
-	sz: uint
+instruction_size :: proc(i: Instruction) -> uint {
+	sz: uint = 0
 	#partial switch t in i {
-	case inst.Label, inst.Nop:
-		return 0
-	case inst.JumpType, inst.CheckBegin:
+	case Label, Nop:
+		return sz
+	case CheckBegin, Jump, Choice, Call, Commit, PartialCommit, BackCommit, TestChar, TestCharNoChoice, TestSet, TestSetNoChoice, TestAny, MemoOpen, MemoTreeOpen:
 		sz += 4
 	case:
 		sz += 2
 	}
 
-	// handle instructions with extra args
+	// handle uctions with extra args
 	#partial switch t in i {
-	case inst.MemoOpen, inst.MemoTreeOpen, inst.MemoTreeClose, inst.CaptureBegin, inst.CaptureLate, inst.CaptureFull, inst.TestChar, inst.TestCharNoChoice, inst.TestSet, inst.TestSetNoChoice, inst.TestAny, inst.Error, inst.CheckBegin, inst.CheckEnd:
+	case MemoOpen, MemoTreeOpen, MemoTreeClose, CaptureBegin, CaptureLate, CaptureFull, TestChar, TestCharNoChoice, TestSet, TestSetNoChoice, TestAny, Error, CheckBegin, CheckEnd:
 		sz += 2
 	}
 

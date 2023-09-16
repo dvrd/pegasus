@@ -1,15 +1,15 @@
-package instructions
+package pegasus
 
 import "core:strings"
-import "pegasus:input"
+import "input"
 
 // A Checker is used so the user can perform additional custom validation of
 // parse results. For example, you might want to parse only 8-bit integers by
 // matching [0-9]+ and then using a checker to ensure the matched integer is in
 // the range 0-256.
 Checker :: union {
-	BackReference,
-	MapChecker,
+	^BackReference,
+	^MapChecker,
 }
 
 MapChecker :: map[string]struct {}
@@ -77,7 +77,18 @@ new_checker :: proc {
 	new_back_reference,
 }
 
-check :: proc {
-	check_map_checker,
-	check_back_reference,
+check :: proc(
+	checker: Checker,
+	b: []byte,
+	src: ^input.Input,
+	id: int,
+	flag: RefKind,
+) -> int {
+	switch c in checker {
+	case ^BackReference:
+		return check_back_reference(c, b, src, id, flag)
+	case ^MapChecker:
+		return check_map_checker(c, b, src, id, flag)
+	}
+	return -1
 }

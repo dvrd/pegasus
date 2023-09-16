@@ -1,13 +1,13 @@
 {
 	"collections": [
-		{ "name": "core", "path": "/Users/kakurega/Developer/oss/Odin/core" },
-		{ "name": "vendor", "path": "/Users/kakurega/Developer/oss/Odin/vendor" },
-		{ "name": "shared", "path": "/Users/kakurega/Developer/oss/Odin/shared" },
-		{ "name": "pegasus", "path": "/Users/kakurega/Developer/projects/pegasus" }
+		{ "name": "core", "path": "/Users/kakurega/Developer/oss/Odin/core" }
 	],
-	"enable_semantic_tokens": false,
+	"enable_semantic_tokens": true,
 	"enable_document_symbols": true,
 	"enable_hover": true,
-	"enable_snippets": true
+	"enable_snippets": true,
+	"enable_inlay_hints": true,
+	"checker_args": "-vet",
+	"verbose": true
 }
 

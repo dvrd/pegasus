@@ -1,9 +1,8 @@
-package instructions
+package pegasus
 
+import "charset"
 import "core:fmt"
 import "core:strings"
-import "pegasus:charset"
-import "pegasus:input"
 
 uniqId: int
 
@@ -43,27 +42,18 @@ Instruction :: union {
 	CheckBegin,
 	CheckEnd,
 	Error,
-	JumpType,
 	OpenCall,
 }
 
 Program :: [dynamic]Instruction
 ProgramSlice :: []Instruction
 
-JumpType :: union {
-	Jump,
-	Choice,
-	Call,
-	Commit,
-	PartialCommit,
-	BackCommit,
-	TestChar,
-	TestCharNoChoice,
-	TestSet,
-	TestSetNoChoice,
-	TestAny,
-	MemoOpen,
-	MemoTreeOpen,
+is_jmp_type :: proc(i: Instruction) -> bool {
+	#partial switch t in i {
+	case Jump, Choice, Call, Commit, PartialCommit, BackCommit, TestChar, TestCharNoChoice, TestSet, TestSetNoChoice, TestAny, MemoOpen, MemoTreeOpen:
+		return true
+	}
+	return false
 }
 
 // Label is used for marking a location in the instruction code with
@@ -147,22 +137,23 @@ FailTwice :: struct {}
 
 // Empty makes a zero-width assertion according to the Op option. We use the
 // same zero-width assertions that are supported by Go's regexp package.
-Empty :: struct {} // Op syntax.EmptyOp
-
+Empty :: struct {
+	op: EmptyOp,
+}
 
 // TestChar consumes the next byte if it matches Byte and jumps to Lbl
 // otherwise. If the consumption is possible, a backtrack entry referring
 // to Lbl and the subject position from before consumption is pushed to the
 // stack.
 TestChar :: struct {
-	byte: Char,
+	byte: rune,
 	lbl:  Label,
 }
 
 // TestCharNoChoice consumes the next byte if it matches Byte and jumps to Lbl
 // otherwise. No backtrack entry is pushed to the stack.
 TestCharNoChoice :: struct {
-	byte: Char,
+	byte: rune,
 	lbl:  Label,
 }
 
@@ -178,7 +169,7 @@ TestSet :: struct {
 // TestSetNoChoice is the same as TestSet but no backtrack entry is pushed to
 // the stack.
 TestSetNoChoice :: struct {
-	chars: ^charset.Set,
+	chars: charset.Set,
 	lbl:   Label,
 }
 
@@ -186,7 +177,7 @@ TestSetNoChoice :: struct {
 // If the consumption is possible, a backtrack entry referring to Lbl and
 // the subject position from before consumption is pushed to the stack.
 TestAny :: struct {
-	n:   Any,
+	n:   int,
 	lbl: Label,
 }
 

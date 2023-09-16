@@ -1,7 +1,6 @@
 package input
 
 import "core:fmt"
-import "core:io"
 import "core:strings"
 import "core:testing"
 
@@ -18,9 +17,9 @@ Input :: struct {
 }
 
 // NewInput creates a new Input wrapper for the io.Reader_At.
-new_input :: proc(r: strings.Reader) -> Input {
+new_input :: proc(r: ^strings.Reader) -> Input {
 	i := Input {
-		r = r,
+		r = r^,
 	}
 	refill(&i, i.base)
 	return i
@@ -92,40 +91,49 @@ advance :: proc(i: ^Input, n: int) -> bool {
 	return true
 }
 
+slice :: proc(i: ^Input, low, high: int) -> []byte {
+	b := make([]byte, high)
+	strings.reader_read_at(&i.r, b, i64(low))
+	return b
+}
+
 pos :: proc(i: ^Input) -> int {
 	return i.base + i.coff
 }
 
 @(test)
 test_input :: proc(t: ^testing.T) {
-	using testing
-	r := strings.Reader{}
+	r := new(strings.Reader)
 	ok: bool
 
-	strings.reader_init(&r, "foo bar baz")
+	strings.reader_init(r, "foo bar baz")
 	i := new_input(r)
 
 	b, _ := peek(&i)
 	msg := fmt.sbprintf(&strings.Builder{}, "incorrect peek got %c", b)
-	expect(t, b == 'f', msg)
+	testing.expect(t, b == 'f', msg)
 
 	advance(&i, 1)
 	b, _ = peek(&i)
 	msg = fmt.sbprintf(&strings.Builder{}, "incorrect peek got %c", b)
-	expect(t, b == 'o', msg)
+	testing.expect(t, b == 'o', msg)
 
 	advance(&i, 1)
 	b, _ = peek(&i)
 	msg = fmt.sbprintf(&strings.Builder{}, "incorrect peek got %c", b)
-	expect(t, b == 'o', msg)
+	testing.expect(t, b == 'o', msg)
 
 	slice: []byte = {0, 0, 0}
 	strings.reader_read_at(&i.r, slice, 4)
-	msg = fmt.sbprintf(&strings.Builder{}, "incorrect slice, got %s", string(slice))
-	expect(t, string(slice) == "bar", msg)
+	msg = fmt.sbprintf(
+		&strings.Builder{},
+		"incorrect slice, got %s",
+		string(slice),
+	)
+	testing.expect(t, string(slice) == "bar", msg)
 
 	success := advance(&i, 9)
-	expect(t, success, "incorrect: couldn't advance by 9")
+	testing.expect(t, success, "incorrect: couldn't advance by 9")
 
 	b, ok = peek(&i)
 	msg = fmt.sbprintf(
@@ -133,6 +141,6 @@ test_input :: proc(t: ^testing.T) {
 		"peek past end of buffer should return false, got %c",
 		b,
 	)
-	expect(t, !ok, msg)
+	testing.expect(t, !ok, msg)
 
 }

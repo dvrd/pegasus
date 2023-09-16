@@ -39,7 +39,7 @@ small_set_has :: proc(c: ^SmallSet, r: byte) -> bool {
 
 // is_small returns true if this set can be converted to a small set. In other
 // words, if this set only matches bytes <128.
-is_small :: proc(c: Set) -> bool {
+is_small :: proc(c: ^Set) -> bool {
 	return c.bits[2] == 0 && c.bits[3] == 0
 }
 
@@ -48,9 +48,11 @@ to_small_set :: proc(c: Set) -> SmallSet {
 	return SmallSet{[2]u64{c.bits[0], c.bits[1]}}
 }
 
-// new returns a charset which accepts all chars in 'chars'. Note
+// new_charset returns a Set which accepts all chars in 'chars'. Note
 // that all chars must be valid ASCII characters (<128).
-new :: proc(chars: []byte) -> (set: Set) {
+new_charset :: proc(chars: []byte) -> (set: ^Set) {
+	set = new(Set)
+	set.bits = [4]u64{0, 0, 0, 0}
 	for c in chars {
 		switch {
 		case c < 64:
@@ -73,7 +75,9 @@ new :: proc(chars: []byte) -> (set: Set) {
 
 // range returns a charset matching all characters between `low` and
 // `high` inclusive.
-range :: proc(low, high: byte) -> (set: Set) {
+range :: proc(low, high: byte) -> (set: ^Set) {
+	set = new(Set)
+	set.bits = [4]u64{0, 0, 0, 0}
 	for c := u64(low); c <= u64(high); c += 1 {
 		switch {
 		case c < 64:
@@ -96,36 +100,36 @@ range :: proc(low, high: byte) -> (set: Set) {
 
 // complement returns a charset that matches all characters except for those
 // matched by `c`.
-complement :: proc(c: Set) -> Set {
-	return Set{[4]u64{~c.bits[0], ~c.bits[1], ~c.bits[2], ~c.bits[3]}}
+complement :: proc(c: ^Set) -> (s: ^Set) {
+	s = new(Set)
+	s.bits = [4]u64{~c.bits[0], ~c.bits[1], ~c.bits[2], ~c.bits[3]}
+	return
 }
 
 // add combines the characters two charsets match together.
-add :: proc(c: Set, c1: Set) -> Set {
-	return(
-		Set{
-			[4]u64{
-				c1.bits[0] | c.bits[0],
-				c1.bits[1] | c.bits[1],
-				c1.bits[2] | c.bits[2],
-				c1.bits[3] | c.bits[3],
-			},
-		} \
-	)
+add :: proc(c: ^Set, c1: ^Set) -> (s: ^Set) {
+	s = new(Set)
+	s.bits = [4]u64{
+		c1.bits[0] | c.bits[0],
+		c1.bits[1] | c.bits[1],
+		c1.bits[2] | c.bits[2],
+		c1.bits[3] | c.bits[3],
+	}
+
+	return
 }
 
 // sub removes from 'c' any characters in 'c1'.
-sub :: proc(c: Set, c1: Set) -> Set {
-	return(
-		Set{
-			[4]u64{
-				~c1.bits[0] & c.bits[0],
-				~c1.bits[1] & c.bits[1],
-				~c1.bits[2] & c.bits[2],
-				~c1.bits[3] & c.bits[3],
-			},
-		} \
-	)
+sub :: proc(c: ^Set, c1: ^Set) -> (s: ^Set) {
+	s = new(Set)
+	s.bits = [4]u64{
+		~c1.bits[0] & c.bits[0],
+		~c1.bits[1] & c.bits[1],
+		~c1.bits[2] & c.bits[2],
+		~c1.bits[3] & c.bits[3],
+	}
+
+	return
 }
 
 // size returns the number of chars matched by this Set.
@@ -140,7 +144,7 @@ size :: proc(c: ^Set) -> int {
 
 // Has checks if a charset accepts a character.
 // Pointer receiver is for performance.
-has :: proc(c: Set, r: byte) -> bool {
+has :: proc(c: ^Set, r: byte) -> bool {
 	return(
 		c.bits[r >> log_2_word_size] & (u64(1) << (r & (word_size - 1))) !=
 		0 \
@@ -152,15 +156,15 @@ string_from_charset :: proc(c: ^Set) -> string {
 	builder := strings.builder_make()
 	in_range := false
 	for b := int(0); b <= 255; b += 1 {
-		if has(c^, byte(b)) && b == 255 {
+		if has(c, byte(b)) && b == 255 {
 			strings.write_rune(&builder, rune(b))
-		} else if has(c^, byte(b)) && !in_range {
+		} else if has(c, byte(b)) && !in_range {
 			in_range = true
-			if has(c^, byte(b + 1)) {
+			if has(c, byte(b + 1)) {
 				strings.write_rune(&builder, rune(b))
 				strings.write_string(&builder, "..")
 			}
-		} else if !has(c^, byte(b)) && in_range {
+		} else if !has(c, byte(b)) && in_range {
 			in_range = false
 			strings.write_rune(&builder, rune(b - 1))
 			strings.write_string(&builder, ",")
@@ -179,7 +183,6 @@ string_from_charset :: proc(c: ^Set) -> string {
 }
 
 in_set :: proc(set: ^Set, included, not_included: []byte, t: ^testing.T) {
-	using testing
 	msg: string
 	for r in included {
 		msg = fmt.sbprintf(
@@ -187,7 +190,7 @@ in_set :: proc(set: ^Set, included, not_included: []byte, t: ^testing.T) {
 			"Error: %c returned 'not in set'",
 			r,
 		)
-		expect(t, has(set^, r), msg)
+		testing.expect(t, has(set, r), msg)
 	}
 
 	for r in not_included {
@@ -196,7 +199,7 @@ in_set :: proc(set: ^Set, included, not_included: []byte, t: ^testing.T) {
 			"Error: %c returned 'in set'",
 			r,
 		)
-		expect(t, !has(set^, r), msg)
+		testing.expect(t, !has(set, r), msg)
 	}
 }
 
@@ -205,9 +208,9 @@ test_set :: proc(t: ^testing.T) {
 	included: [6]byte = {'a', 'b', 'c', 'd', '{', '}'}
 	not_included: [5]byte = {'x', 'y', 'z', '[', ']'}
 
-	set := new(included[:])
+	set := new_charset(included[:])
 
-	in_set(&set, included[:], not_included[:], t)
+	in_set(set, included[:], not_included[:], t)
 }
 
 @(test)
@@ -218,7 +221,7 @@ test_range_union :: proc(t: ^testing.T) {
 	included: []byte = {'a', 'b', 'c', 'd', 'z', 'y', 'A', 'Z', 'B'}
 	not_included: []byte = {'0', '1', '2', 0}
 
-	in_set(&set, included, not_included, t)
+	in_set(set, included, not_included, t)
 }
 
 @(test)
@@ -226,9 +229,9 @@ test_complement :: proc(t: ^testing.T) {
 	included := []byte{'a', 'b', 'c', 'd', '{', '}'}
 	not_included := []byte{'x', 'y', 'z', '[', ']'}
 
-	set := complement(new(included))
+	set := complement(new_charset(included))
 
-	in_set(&set, not_included, included, t)
+	in_set(set, not_included, included, t)
 }
 
 @(test)
@@ -239,5 +242,5 @@ test_big_set :: proc(t: ^testing.T) {
 	r: rune = '\xff'
 	set := range(128, u8(r))
 
-	in_set(&set, included, not_included, t)
+	in_set(set, included, not_included, t)
 }

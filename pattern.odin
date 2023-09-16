@@ -1,9 +1,6 @@
-// Package pattern provides data types and functions for compiling patterns
-// into Pegasus VM programs.
-package pattern
+package pegasus
 
-import "pegasus:charset"
-import inst "pegasus:instructions"
+import "charset"
 
 // Cap marks a pattern to be captured.
 cap :: proc(
@@ -20,16 +17,16 @@ cap :: proc(
 }
 
 // Check marks a pattern to be checked with the given checker.
-check :: proc(p: Pattern, c: inst.Checker) -> (np: Pattern) {
+check_pattern :: proc(p: Pattern, c: Checker) -> (np: Pattern) {
 	np = new(CheckNode)
 	np.(^CheckNode).patt = p
 	np.(^CheckNode).checker = c
 	return
 }
 
-check_flags :: proc(
+check_pattern_with_flags :: proc(
 	p: Pattern,
-	c: inst.Checker,
+	c: Checker,
 	id, flag: int,
 ) -> (
 	np: Pattern,
@@ -54,7 +51,7 @@ memo_id :: proc(p: Pattern, id: int) -> (m: Pattern) {
 }
 
 // Memo marks a pattern as memoizable.
-memo :: proc(p: Pattern) -> (m: Pattern) {
+memo_pattern :: proc(p: Pattern) -> (m: Pattern) {
 	m = new(MemoNode)
 	m.(^MemoNode).patt = p
 	m.(^MemoNode).id = MEMO_ID
@@ -72,7 +69,9 @@ literal :: proc(s: string) -> (p: Pattern) {
 // Set matches any character in the given set.
 set :: proc(chars: ^charset.Set) -> (p: Pattern) {
 	p = new(ClassNode)
-	p.(^ClassNode).chars = chars
+	c := new(charset.Set)
+	c.bits = chars.bits
+	p.(^ClassNode).chars = c
 	return
 }
 
@@ -254,11 +253,4 @@ error :: proc(
 	np.(^ErrorNode).message = msg
 	np.(^ErrorNode).recover = recovery
 	return
-}
-
-max :: proc(a, b: int) -> int {
-	if a > b {
-		return a
-	}
-	return b
 }

@@ -1,7 +1,6 @@
-package pattern
+package pegasus
 
-import "pegasus:charset"
-import inst "pegasus:instructions"
+import "charset"
 
 // A Pattern is an object that can be compiled into a parsing program.
 Pattern :: union {
@@ -80,7 +79,7 @@ MemoNode :: struct {
 // CheckNode marks a pattern to be checker by a certain checker.
 CheckNode :: struct {
 	patt:    Pattern,
-	checker: inst.Checker,
+	checker: Checker,
 	id:      int,
 	flag:    int,
 }
