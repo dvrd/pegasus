@@ -1,1 +1,5 @@
 pegasus
+
+*.dSYM
+*.ll
+*.bin
