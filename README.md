@@ -1,14 +1,11 @@
 # Pegasus
 
-A PEG parser for Odin, very early days
+A PEG parser for Odin. Basically a reimplementation of `@zyedidia's` [gpeg](https://github.com/zyedidia/gpeg)
 
-# UC
-- [x] pattern
-- [x] range
-- [x] set
-- [x] basic matching instructions
-- [x] concatenate instructions
-- [x] repeat at least 0
-- [] repeat at least 1
-- [] repeat at most 1
-- [] repeat at most n
+Not cleaning anything atm, so wouldn't recommend it for serious things
+
+You can find an example at `main.odin` right now. Will work on making it more practical to actually be useful for parsing. Rightnow the api is too verbose.
+
+TODO: 
+- [] Implement PEG grammar to allow creating grammars from strings
+- [] Clean up unused data
