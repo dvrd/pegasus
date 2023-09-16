@@ -9,3 +9,8 @@ You can find an example at `main.odin` right now. Will work on making it more pr
 TODO: 
 - [] Implement PEG grammar to allow creating grammars from strings
 - [] Clean up unused data
+
+To try it out: 
+```
+task run
+```
