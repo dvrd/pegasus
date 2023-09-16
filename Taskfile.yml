@@ -12,7 +12,7 @@ tasks:
       - ./bin/pegasus
   build:
     cmds:
-      - mkdir bin
+      - mkdir -p bin
       - odin build . -o:speed -out:bin/pegasus
     sources:
       - ./**/*.odin

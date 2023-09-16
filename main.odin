@@ -27,26 +27,23 @@ match :: proc(
 	return exec(&code, reader, memtbl)
 }
 
+space := star(set(charset.new_charset([]byte{' ', '\t', '\n'})))
+number := plus(set(charset.range('0', '9')))
+numeral := concat(number, space)
+term := or(
+	non_term("number"),
+	concat(concat(literal("("), non_term("expr")), literal(")")),
+)
+addition := concat(literal("+"), space)
+op_add := concat(addition, non_term("term"))
+expr := concat(non_term("term"), star(op_add))
+p := grammar(
+	"expr",
+	map[string]Pattern{"expr" = expr, "term" = term, "number" = numeral},
+)
+
 main :: proc() {
 	subject := "23 + 23"
-	space := star(set(charset.new_charset([]byte{' ', '\t', '\n'})))
-	number := plus(set(charset.range('0', '9')))
-	numeral := concat(number, space)
-
-	term := or(
-		non_term("number"),
-		concat(concat(literal("("), non_term("expr")), literal(")")),
-	)
-
-	addition := concat(literal("+"), space)
-	op_add := concat(addition, non_term("term"))
-	expr := concat(non_term("term"), star(op_add))
-
-	p := grammar(
-		"expr",
-		map[string]Pattern{"expr" = expr, "term" = term, "number" = numeral},
-	)
-
 
 	ok, pos, captures, errs := match(p, subject)
 
