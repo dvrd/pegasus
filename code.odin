@@ -361,16 +361,15 @@ test_json :: proc(t: ^testing.T) {
 
 	testing.expect(
 		t,
-		size_of(json_code) == size_of(code),
+		size_of(json_code^) == size_of(code),
 		"Saved and loaded code not equivalent",
 	)
 
 	for _, i in code.insns {
 		testing.expect(
 			t,
-			json_code.insns[i] != code.insns[i],
+			json_code.insns[i] == code.insns[i],
 			fmt.sbprintf(&strings.Builder{}, "Code byte %d does not match", i),
 		)
-		fmt.eprintln(i)
 	}
 }
