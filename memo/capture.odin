@@ -1,5 +1,6 @@
 package memo
 
+import "core:fmt"
 import "core:strings"
 
 CaptureKind :: enum {
@@ -46,54 +47,81 @@ capture_new_dummy :: proc(
 	return
 }
 
-IteratorInnerContext :: struct {
-	i:     ^int,
+IteratorState :: struct {
+	i:     int,
 	c:     ^Capture,
-	subit: proc() -> ^Capture,
-	ret:   proc() -> ^Capture,
+	subit: proc(
+		state: ^IteratorState,
+	) -> (
+		ch: ^Capture,
+		idx: int,
+		keep_going: bool,
+	),
+	ret:   proc(
+		state: ^IteratorState,
+	) -> (
+		ch: ^Capture,
+		idx: int,
+		keep_going: bool,
+	),
 }
 
-capture_child_iterator :: proc(c: ^Capture, start: int) -> proc() -> ^Capture {
-	i := 0
-	subit, ret: proc() -> ^Capture
-	context_map: IteratorInnerContext = {&i, c, subit, ret}
-	context.user_ptr = &context_map
-	ret = proc() -> ^Capture {
-		context_map := cast(^IteratorInnerContext)context.user_ptr
-		i := context_map.i
-		c := context_map.c
-		subit := context_map.subit
-		ret := context_map.ret
-		if i^ >= len(c.children) {
-			return nil
+capture_child_iterator :: proc(
+	c: ^Capture,
+	start: int = 0,
+) -> (
+	proc(state: ^IteratorState) -> (ch: ^Capture, idx: int, keep_going: bool),
+	^IteratorState,
+) {
+	i := start
+
+	subit, ret: proc(
+		state: ^IteratorState,
+	) -> (
+		ch: ^Capture,
+		idx: int,
+		keep_going: bool,
+	)
+	state := new(IteratorState)
+	state.i = i
+	state.c = c
+	state.subit = subit
+	state.ret = ret
+
+	ret =
+	proc(state: ^IteratorState) -> (ch: ^Capture, idx: int, keep_going: bool) {
+		idx = state.i
+		keep_going = true
+		if idx >= len(state.c.children) {
+			return nil, idx, false
 		}
-		ch := c.children[i^]
-		if ch.typ == .Dummy && subit == nil {
-			subit = capture_child_iterator(ch, ch.off)
+		ch = state.c.children[idx]
+		child_state: ^IteratorState
+		if ch.typ == .Dummy && state.subit == nil {
+			state.subit, child_state = capture_child_iterator(ch, ch.off)
 		}
-		if subit != nil {
-			ch = subit()
+		if state.subit != nil {
+			ch, idx, keep_going = state.subit(child_state)
 		} else {
-			i^ += 1
+			state.i += 1
 		}
 		if ch == nil {
-			subit = nil
-			i^ += 1
-			return ret()
+			state.subit = nil
+			state.i += 1
+			ch, idx, keep_going = state.ret(state)
+			return
 		}
-		return ch
+		return ch, idx, keep_going
 	}
-	return ret
+	return ret, state
 }
 
 capture_child :: proc(c: ^Capture, n: int) -> ^Capture {
-	it := capture_child_iterator(c, 0)
-	i := 0
-	for ch := it(); ch != nil; ch = it() {
+	it, state := capture_child_iterator(c)
+	for ch, i in it(state) {
 		if i == n {
 			return ch
 		}
-		i += 1
 	}
 	return nil
 }

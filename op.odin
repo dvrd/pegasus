@@ -1,7 +1,5 @@
 package pegasus
 
-import "core:fmt"
-
 Opcode :: enum {
 	Char,
 	Jump,

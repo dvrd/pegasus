@@ -9,18 +9,19 @@ tasks:
   run:
     cmds:
       - task build
-      - ./bin/pegasus
+      - ./bin/pegasus {{.CLI_ARGS}}
+    aliases:
+      - r
   build:
     cmds:
       - mkdir -p bin
-      - odin build . -o:speed -out:bin/pegasus
+      - odin build . -o:speed -debug -out:bin/pegasus
     sources:
       - ./**/*.odin
     generates:
       - ./bin/pegasus
     aliases:
       - b
-    silent: true
   test:
     cmds:
       - odin test {{.CLI_ARGS}} {{.COLLECTION}}

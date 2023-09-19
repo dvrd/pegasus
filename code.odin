@@ -32,8 +32,10 @@ func init() {
 }
 */
 
+
 // Encode transforms a program into VM bytecode.
 encode :: proc(insns: Program) -> Code {
+	fmt.println("ENCODING", len(insns), "INSTRUCTIONS")
 	code := Code {
 		sets     = make([dynamic]charset.Set),
 		errors   = make([dynamic]string),
@@ -55,6 +57,10 @@ encode :: proc(insns: Program) -> Code {
 		}
 	}
 
+	for k, v in labels {
+		fmt.println(k, v)
+	}
+	fmt.println(string_from_program(insns[:]))
 	for insn in insns {
 		op: Opcode
 		args: []byte
@@ -63,7 +69,9 @@ encode :: proc(insns: Program) -> Code {
 			continue
 		case Char:
 			op = .Char
-			args = []byte{byte(t.byte)}
+			b := make([]byte, 1)
+			b[0] = byte(t.byte)
+			args = b
 		case Jump:
 			op = .Jump
 			args = encodeLabel(labels[t.lbl])
@@ -85,7 +93,9 @@ encode :: proc(insns: Program) -> Code {
 			args = encodeU8(addSet(&code, t.chars^))
 		case Any:
 			op = .Any
-			args = []byte{byte(t.n)}
+			b := make([]byte, 1)
+			b[0] = byte(t.n)
+			args = b
 		case PartialCommit:
 			op = .PartialCommit
 			args = encodeLabel(labels[t.lbl])
@@ -99,16 +109,18 @@ encode :: proc(insns: Program) -> Code {
 			op = .FailTwice
 		case Empty:
 			op = .Empty
-			args = []byte{}
+			b := make([]byte, 1)
+			b[0] = u8(t.op)
+			args = b
 		case TestChar:
 			op = .TestChar
-			b := make([dynamic]byte, len(encodeLabel(labels[t.lbl])) + 1)
+			b := make([dynamic]byte)
 			append(&b, byte(t.byte))
 			append(&b, ..encodeLabel(labels[t.lbl]))
 			args = b[:]
 		case TestCharNoChoice:
 			op = .TestCharNoChoice
-			b := make([dynamic]byte, len(encodeLabel(labels[t.lbl])) + 1)
+			b := make([dynamic]byte)
 			append(&b, byte(t.byte))
 			append(&b, ..encodeLabel(labels[t.lbl]))
 			args = b[:]
@@ -124,47 +136,39 @@ encode :: proc(insns: Program) -> Code {
 			args = b[:]
 		case TestAny:
 			op = .TestAny
-			b := make([dynamic]byte, len(encodeLabel(labels[t.lbl])) + 1)
+			b := make([dynamic]byte)
 			append(&b, byte(t.n))
 			append(&b, ..encodeLabel(labels[t.lbl]))
 
 			args = b[:]
 		case CaptureBegin:
 			op = .CaptureBegin
-			args = encodeI16(int(t.id))
+			args = encodeI16(t.id)
 		case CaptureEnd:
 			op = .CaptureEnd
 		case CaptureLate:
 			op = .CaptureLate
-			b := make([dynamic]byte, len(encodeI16(int(t.id))) + 1)
+			b := make([dynamic]byte)
 			append(&b, byte(t.back))
-			append(&b, ..encodeI16(int(t.id)))
-
+			append(&b, ..encodeI16(t.id))
 			args = b[:]
 		case CaptureFull:
 			op = .CaptureFull
-			b := make([dynamic]byte, len(encodeI16(int(t.id))) + 1)
+			b := make([dynamic]byte)
 			append(&b, byte(t.back))
 			append(&b, ..encodeI16(int(t.id)))
-
 			args = b[:]
 		case MemoOpen:
 			op = .MemoOpen
 			b := slice.to_dynamic(encodeLabel(labels[t.lbl]))
 			append(&b, ..encodeI16(t.id))
-
 			args = b[:]
 		case MemoClose:
 			op = .MemoClose
 		case MemoTreeOpen:
 			op = .MemoTreeOpen
-			b := make(
-				[dynamic]byte,
-				len(encodeLabel(labels[t.lbl])) + len(encodeI16(t.id)),
-			)
-			append(&b, ..encodeLabel(labels[t.lbl]))
+			b := slice.to_dynamic(encodeLabel(labels[t.lbl]))
 			append(&b, ..encodeI16(t.id))
-
 			args = b[:]
 		case MemoTreeInsert:
 			op = .MemoTreeInsert
@@ -175,13 +179,8 @@ encode :: proc(insns: Program) -> Code {
 			args = encodeI16(int(t.id))
 		case CheckBegin:
 			op = .CheckBegin
-			b := make(
-				[dynamic]byte,
-				len(encodeI16(t.flag)) + len(encodeI16(t.id)),
-			)
-			append(&b, ..encodeI16(t.flag))
+			b := slice.to_dynamic(encodeI16(t.flag))
 			append(&b, ..encodeI16(t.id))
-
 			args = b[:]
 		case CheckEnd:
 			op = .CheckEnd
@@ -213,6 +212,7 @@ encode :: proc(insns: Program) -> Code {
 
 	append(&code.insns, byte(Opcode.End), 0)
 
+	fmt.println("ENCODED INSTRUCTIONS", len(code.insns))
 	return code
 }
 

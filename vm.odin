@@ -41,7 +41,7 @@ exec :: proc(
 	// if memtbl.Size() == 0 {
 	// 	srccopy := input.NewInput(r)
 	// 	srccopy.SeekTo(1000000)
-	// 	go vm.exec(0, newStack(), srccopy, memtbl)
+	// 	thread? exec(vm, ,0, stack_new(), srccopy, memtbl)
 	// }
 
 	return exec_code(vm, &ip, st, &src, memtbl, nil)
@@ -79,6 +79,7 @@ exec_code :: proc(
 	[]ParseError,
 ) {
 	idata := vm.insns
+	fmt.println("EXECUTING INSTRUCTIONS", len(idata))
 
 	if ip^ < 0 || ip^ >= len(idata) {
 		return true, 0, memo.capture_new_dummy(0, 0, nil), nil
@@ -106,8 +107,9 @@ exec_code :: proc(
 		src:    ^input.Input,
 		memtbl: ^memo.Table,
 	} = {intrvl, src, memtbl}
-	context.user_ptr = &context_map
+	context.user_ptr = &context_map // HAVENT TESTED THIS FUNCTION WITH THE CONTEXT - PROBABLY BROKEN
 	memoize := proc(id, pos, mlen, count: int, capt: []^memo.Capture) {
+		fmt.println("HELLO FROM MEMOIZE")
 		context_map := cast(^struct {
 			intrvl: ^Interval,
 			src:    ^input.Input,
@@ -138,8 +140,8 @@ exec_code :: proc(
 				ok := failure_handler(ip, st, src, memoize);if !ok {
 					return ok, input.pos(src), nil, errs[:]
 				}
-				continue loop
 			}
+			continue loop
 		case .Jump:
 			lbl := decodeU24(idata[ip^ + 1:])
 			ip^ = int(lbl)
@@ -578,23 +580,22 @@ failure_handler :: proc(
 		return false
 	}
 
-	for {
-		#partial switch ent.stype {
-		case .Btrack:
-			ip^ = ent.btrack.ip
-			input.seek_to(src, ent.btrack.off)
-			ent.capt = nil
-		case .Memo:
-			// Mark this position in the memoTable as a failed match
-			memoize(int(ent.memoized.id), ent.memoized.pos, -1, 0, nil)
-			ent.capt = nil
-			continue
-		case .Ret, .Capt, .Check:
-			ent.capt = nil
-			continue
-		}
+	#partial switch ent.stype {
+	case .Btrack:
+		ip^ = ent.btrack.ip
+		input.seek_to(src, ent.btrack.off)
+		ent.capt = nil
 		return true
+	case .Memo:
+		// Mark this position in the memoTable as a failed match
+		memoize(int(ent.memoized.id), ent.memoized.pos, -1, 0, nil)
+		ent.capt = nil
+		failure_handler(ip, st, src, memoize)
+	case .Ret, .Capt, .Check:
+		ent.capt = nil
+		failure_handler(ip, st, src, memoize)
 	}
+	return true
 }
 
 decodeU8 :: proc(b: []byte) -> byte {

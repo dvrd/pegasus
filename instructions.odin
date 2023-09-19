@@ -269,67 +269,67 @@ OpenCall :: struct {
 	name: string,
 }
 
-string_from_label :: proc(i: ^Label) -> string {
+string_from_label :: proc(i: Label) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "L%v", i.id)
 }
 
-string_from_char :: proc(i: ^Char) -> string {
+string_from_char :: proc(i: Char) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Char %v", i.byte)
 }
 
-string_from_jump :: proc(i: ^Jump) -> string {
+string_from_jump :: proc(i: Jump) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Jump %v", i.lbl)
 }
 
-string_from_choice :: proc(i: ^Choice) -> string {
+string_from_choice :: proc(i: Choice) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Choice %v", i.lbl)
 }
 
-string_from_call :: proc(i: ^Call) -> string {
+string_from_call :: proc(i: Call) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Call %v", i.lbl)
 }
 
-string_from_commit :: proc(i: ^Commit) -> string {
+string_from_commit :: proc(i: Commit) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Commit %v", i.lbl)
 }
 
-string_from_return :: proc(i: ^Return) -> string {
+string_from_return :: proc(i: Return) -> string {
 	return "Return"
 }
 
-string_from_fail :: proc(i: ^Fail) -> string {
+string_from_fail :: proc(i: Fail) -> string {
 	return "Fail"
 }
 
-string_from_set :: proc(i: ^Set) -> string {
+string_from_set :: proc(i: Set) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Set %v", i.chars)
 }
 
-string_from_any :: proc(i: ^Any) -> string {
+string_from_any :: proc(i: Any) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Any %v", i.n)
 }
 
-string_from_partial_commit :: proc(i: ^PartialCommit) -> string {
+string_from_partial_commit :: proc(i: PartialCommit) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "PartialCommit %v", i.lbl)
 }
 
-string_from_span :: proc(i: ^Span) -> string {
+string_from_span :: proc(i: Span) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "Span %v", i.chars)
 }
 
-string_from_back_commit :: proc(i: ^BackCommit) -> string {
+string_from_back_commit :: proc(i: BackCommit) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "BackCommit %v", i)
 }
 
-string_from_fail_twice :: proc(i: ^FailTwice) -> string {
+string_from_fail_twice :: proc(i: FailTwice) -> string {
 	return "FailTwice"
 }
 
-string_from_test_char :: proc(i: ^TestChar) -> string {
+string_from_test_char :: proc(i: TestChar) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "TestChar %v %v", i.byte, i.lbl)
 }
 
-string_from_test_char_no_choice :: proc(i: ^TestCharNoChoice) -> string {
+string_from_test_char_no_choice :: proc(i: TestCharNoChoice) -> string {
 	return fmt.sbprintf(
 		&strings.Builder{},
 		"TestCharNoChoice %v %v",
@@ -338,11 +338,11 @@ string_from_test_char_no_choice :: proc(i: ^TestCharNoChoice) -> string {
 	)
 }
 
-string_from_test_set :: proc(i: ^TestSet) -> string {
+string_from_test_set :: proc(i: TestSet) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "TestSet %v %v", i.chars, i.lbl)
 }
 
-string_from_test_set_no_choice :: proc(i: ^TestSetNoChoice) -> string {
+string_from_test_set_no_choice :: proc(i: TestSetNoChoice) -> string {
 	return fmt.sbprintf(
 		&strings.Builder{},
 		"TestSetNoChoice %v %v",
@@ -351,11 +351,11 @@ string_from_test_set_no_choice :: proc(i: ^TestSetNoChoice) -> string {
 	)
 }
 
-string_from_test_any :: proc(i: ^TestAny) -> string {
+string_from_test_any :: proc(i: TestAny) -> string {
 	return fmt.sbprintf(&strings.Builder{}, "TestAny %v %v", i.n, i.lbl)
 }
 
-string_from_end :: proc(i: ^End) -> string {
+string_from_end :: proc(i: End) -> string {
 	if i.fail {
 		return "End Fail"
 	}
@@ -427,7 +427,7 @@ string_from_open_call :: proc(i: OpenCall) -> string {
 }
 
 // String returns the string representation of the program.
-string_from_program :: proc(p: Program) -> string {
+string_from_program :: proc(p: []Instruction) -> string {
 	s: string
 	last: Instruction
 	for inst in p {
@@ -436,12 +436,153 @@ string_from_program :: proc(p: Program) -> string {
 			continue
 		case Label:
 			_, ok := last.(Label);if ok {
-				s = fmt.sbprintf(&strings.Builder{}, "\n%v:", inst)
+				s = strings.concatenate(
+					{
+						s,
+						fmt.sbprintf(
+							&strings.Builder{},
+							"\n%v:",
+							to_string(t),
+						),
+					},
+				)
 			} else {
-				s = fmt.sbprintf(&strings.Builder{}, "%v:", inst)
+				s = strings.concatenate(
+					{s, fmt.sbprintf(&strings.Builder{}, "%v:", to_string(t))},
+				)
 			}
-		case:
-			s = fmt.sbprintf(&strings.Builder{}, "\t%v\n", inst)
+		case Char:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Jump:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Choice:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Call:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Commit:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Return:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Fail:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Set:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Any:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case PartialCommit:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Span:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case BackCommit:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case FailTwice:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case TestChar:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case TestCharNoChoice:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case TestSet:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case TestSetNoChoice:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case TestAny:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case End:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case CheckBegin:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case CheckEnd:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case MemoOpen:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case MemoClose:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case MemoTreeOpen:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case MemoTreeInsert:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case MemoTree:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case MemoTreeClose:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case CaptureBegin:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case CaptureLate:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case CaptureEnd:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case CaptureFull:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Error:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
+		case Empty:
+			s = strings.concatenate(
+				{s, fmt.sbprintf(&strings.Builder{}, "\t%v\n", to_string(t))},
+			)
 		}
 		last = inst
 	}
