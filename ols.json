@@ -7,6 +7,7 @@
 	"enable_hover": true,
 	"enable_snippets": true,
 	"enable_inlay_hints": true,
+	"checker_args": "-strict-style -vet -vet-style",
 	"verbose": true
 }
 
