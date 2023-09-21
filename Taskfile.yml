@@ -3,20 +3,24 @@
 version: '3'
 
 vars:
-  COLLECTION: -collection:pegasus=pegasus
+  COLLECTION: -collection:pegasus=./lib
 
 tasks:
   run:
     cmds:
-      - odin run . {{.CLI_ARGS}}
+      - odin run lib {{.CLI_ARGS}} -out:bin/pegasus
+    sources:
+      - ./lib/**/*.odin
+    generates:
+      - ./bin/pegasus
     aliases:
       - r
   build:
     cmds:
       - mkdir -p bin
-      - odin build . -o:speed -out:bin/pegasus
+      - odin build lib -o:speed -out:bin/pegasus
     sources:
-      - ./**/*.odin
+      - ./lib/**/*.odin
     generates:
       - ./bin/pegasus
     aliases:

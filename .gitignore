@@ -3,3 +3,4 @@ bin
 *.dSYM
 *.ll
 *.bin
+.task

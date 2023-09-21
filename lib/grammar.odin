@@ -80,14 +80,14 @@ NonTerm :: enum {
 	BRACEPO,
 }
 
-re_grammar := map[string]Pattern{
+re_grammar := map[string]Pattern {
 	"Pattern"    = cap(
 		concat(
 			non_term("Spacing"),
 			or(non_term("Grammar"), non_term("Expression")),
 			non_term("EndOfFile"),
 		),
-		int(NonTerm.Pattern)
+		int(NonTerm.Pattern),
 	),
 	"Grammar"    = cap(plus(non_term("Definition")), int(NonTerm.Grammar)),
 	"Definition" = cap(
@@ -96,14 +96,14 @@ re_grammar := map[string]Pattern{
 			non_term("LEFTARROW"),
 			non_term("Expression"),
 		),
-		int(NonTerm.Definition)
+		int(NonTerm.Definition),
 	),
 	"Expression" = cap(
 		concat(
 			non_term("Sequence"),
 			star(concat(non_term("SLASH"), non_term("Sequence"))),
 		),
-		int(NonTerm.Expression)
+		int(NonTerm.Expression),
 	),
 	"Sequence"   = cap(star(non_term("Prefix")), int(NonTerm.Sequence)),
 	"Prefix"     = cap(
@@ -111,7 +111,7 @@ re_grammar := map[string]Pattern{
 			optional(or(non_term("AND"), non_term("NOT"))),
 			non_term("Suffix"),
 		),
-		int(NonTerm.Prefix)
+		int(NonTerm.Prefix),
 	),
 	"Suffix"     = cap(
 		concat(
@@ -120,7 +120,7 @@ re_grammar := map[string]Pattern{
 				or(non_term("QUESTION"), non_term("STAR"), non_term("PLUS")),
 			),
 		),
-		int(NonTerm.Suffix)
+		int(NonTerm.Suffix),
 	),
 	"Primary"    = cap(
 		or(
@@ -144,7 +144,7 @@ re_grammar := map[string]Pattern{
 			non_term("Class"),
 			non_term("DOT"),
 		),
-		int(NonTerm.Primary)
+		int(NonTerm.Primary),
 	),
 	"Identifier" = cap(
 		concat(
@@ -152,7 +152,7 @@ re_grammar := map[string]Pattern{
 			star(non_term("IdentCont")),
 			non_term("Spacing"),
 		),
-		int(NonTerm.Identifier)
+		int(NonTerm.Identifier),
 	),
 	"IdentStart" = cap(
 		set(
@@ -161,11 +161,11 @@ re_grammar := map[string]Pattern{
 				charset.new_charset([]byte{'_'}),
 			),
 		),
-		int(NonTerm.IdentStart)
+		int(NonTerm.IdentStart),
 	),
 	"IdentCont"  = cap(
 		or(non_term("IdentStart"), set(charset.range('0', '9'))),
-		int(NonTerm.IdentCont)
+		int(NonTerm.IdentCont),
 	),
 	"Literal"    = cap(
 		or(
@@ -182,7 +182,7 @@ re_grammar := map[string]Pattern{
 				non_term("Spacing"),
 			),
 		),
-		int(NonTerm.Literal)
+		int(NonTerm.Literal),
 	),
 	"Class"      = cap(
 		concat(
@@ -192,14 +192,14 @@ re_grammar := map[string]Pattern{
 			literal("]"),
 			non_term("Spacing"),
 		),
-		int(NonTerm.Class)
+		int(NonTerm.Class),
 	),
 	"Range"      = cap(
 		or(
 			concat(non_term("Char"), literal("-"), non_term("Char")),
 			non_term("Char"),
 		),
-		int(NonTerm.Range)
+		int(NonTerm.Range),
 	),
 	"Char"       = cap(
 		or(
@@ -224,20 +224,50 @@ re_grammar := map[string]Pattern{
 			),
 			concat(not(literal("\\")), any(1)),
 		),
-		int(NonTerm.Char)
+		int(NonTerm.Char),
 	),
-	"AND"        = cap(concat(literal("&"), non_term("Spacing")), int(NonTerm.AND)),
-	"NOT"        = cap(concat(literal("!"), non_term("Spacing")), int(NonTerm.NOT)),
-	"QUESTION"   = cap(concat(literal("?"), non_term("Spacing")), int(NonTerm.QUESTION)),
-	"STAR"       = cap(concat(literal("*"), non_term("Spacing")), int(NonTerm.STAR)),
-	"PLUS"       = cap(concat(literal("+"), non_term("Spacing")), int(NonTerm.PLUS)),
-	"DOT"        = cap(concat(literal("."), non_term("Spacing")), int(NonTerm.DOT)),
-	"CARAT"      = cap(concat(literal("^"), non_term("Spacing")), int(NonTerm.CARAT)),
-	"OPEN"       = cap(concat(literal("("), non_term("Spacing")), int(NonTerm.OPEN)),
+	"AND"        = cap(
+		concat(literal("&"), non_term("Spacing")),
+		int(NonTerm.AND),
+	),
+	"NOT"        = cap(
+		concat(literal("!"), non_term("Spacing")),
+		int(NonTerm.NOT),
+	),
+	"QUESTION"   = cap(
+		concat(literal("?"), non_term("Spacing")),
+		int(NonTerm.QUESTION),
+	),
+	"STAR"       = cap(
+		concat(literal("*"), non_term("Spacing")),
+		int(NonTerm.STAR),
+	),
+	"PLUS"       = cap(
+		concat(literal("+"), non_term("Spacing")),
+		int(NonTerm.PLUS),
+	),
+	"DOT"        = cap(
+		concat(literal("."), non_term("Spacing")),
+		int(NonTerm.DOT),
+	),
+	"CARAT"      = cap(
+		concat(literal("^"), non_term("Spacing")),
+		int(NonTerm.CARAT),
+	),
+	"OPEN"       = cap(
+		concat(literal("("), non_term("Spacing")),
+		int(NonTerm.OPEN),
+	),
 	"CLOSE"      = concat(literal(")"), non_term("Spacing")),
-	"BRACEO"     = cap(concat(literal("{"), non_term("Spacing")), int(NonTerm.BRACEO)),
+	"BRACEO"     = cap(
+		concat(literal("{"), non_term("Spacing")),
+		int(NonTerm.BRACEO),
+	),
 	"BRACEC"     = concat(literal("}"), non_term("Spacing")),
-	"BRACEPO"    = cap(concat(literal("{{"), non_term("Spacing")), int(NonTerm.BRACEPO)),
+	"BRACEPO"    = cap(
+		concat(literal("{{"), non_term("Spacing")),
+		int(NonTerm.BRACEPO),
+	),
 	"BRACEPC"    = concat(literal("}}"), non_term("Spacing")),
 	"SLASH"      = concat(literal("/"), non_term("Spacing")),
 	"LEFTARROW"  = concat(literal("<-"), non_term("Spacing")),

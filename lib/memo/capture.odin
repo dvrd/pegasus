@@ -1,6 +1,5 @@
 package memo
 
-import "core:fmt"
 import "core:strings"
 
 CaptureKind :: enum {
