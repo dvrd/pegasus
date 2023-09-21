@@ -35,7 +35,6 @@ func init() {
 
 // Encode transforms a program into VM bytecode.
 encode :: proc(insns: Program) -> Code {
-	fmt.println("ENCODING", len(insns), "INSTRUCTIONS")
 	code := Code {
 		sets     = make([dynamic]charset.Set),
 		errors   = make([dynamic]string),
@@ -57,10 +56,6 @@ encode :: proc(insns: Program) -> Code {
 		}
 	}
 
-	for k, v in labels {
-		fmt.println(k, v)
-	}
-	fmt.println(string_from_program(insns[:]))
 	for insn in insns {
 		op: Opcode
 		args: []byte
@@ -212,7 +207,6 @@ encode :: proc(insns: Program) -> Code {
 
 	append(&code.insns, byte(Opcode.End), 0)
 
-	fmt.println("ENCODED INSTRUCTIONS", len(code.insns))
 	return code
 }
 

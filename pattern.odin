@@ -120,6 +120,7 @@ concat :: proc(
 		np.(^SeqNode).right = p
 		acc = np
 	}
+	np = acc
 
 	return
 }
@@ -139,6 +140,7 @@ or :: proc(patts: ..Pattern, allocator := context.allocator) -> (np: Pattern) {
 		np.(^AltNode).right = acc
 		acc = np
 	}
+	np = acc
 
 	return
 }

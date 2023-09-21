@@ -79,7 +79,6 @@ exec_code :: proc(
 	[]ParseError,
 ) {
 	idata := vm.insns
-	fmt.println("EXECUTING INSTRUCTIONS", len(idata))
 
 	if ip^ < 0 || ip^ >= len(idata) {
 		return true, 0, memo.capture_new_dummy(0, 0, nil), nil
@@ -109,7 +108,6 @@ exec_code :: proc(
 	} = {intrvl, src, memtbl}
 	context.user_ptr = &context_map // HAVENT TESTED THIS FUNCTION WITH THE CONTEXT - PROBABLY BROKEN
 	memoize := proc(id, pos, mlen, count: int, capt: []^memo.Capture) {
-		fmt.println("HELLO FROM MEMOIZE")
 		context_map := cast(^struct {
 			intrvl: ^Interval,
 			src:    ^input.Input,

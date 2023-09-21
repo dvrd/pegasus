@@ -30,7 +30,6 @@ compile :: proc(p: Pattern) -> (c: Program, err: bool) {
 	c, err = compile_pattern(p);if err {
 		return
 	}
-	fmt.println(len(c))
 	optimize(&c)
 	return
 }
@@ -56,9 +55,6 @@ compile_alt_node :: proc(p: ^AltNode) -> (Program, bool) {
 	set, ok := combine(get_pattern(p.left), get_pattern(p.right));if ok {
 		return Program{Set{set}}, false
 	}
-
-	fmt.println("COMPILE ALT NODE")
-
 
 	l, err1 := compile_pattern(get_pattern(p.left));if err1 {
 		return nil, err1
@@ -383,24 +379,20 @@ compile_grammar_node :: proc(p: ^GrammarNode) -> (Program, bool) {
 	append(&code, OpenCall{p.start}, Jump{LEnd})
 
 	labels := make(map[string]Label)
-	fmt.println("GRAMMAR NODE | PRE LABELS CODE", len(code), p.defs)
 	for k, v in p.defs {
 		if k != p.start && !used[k] {
 			continue
 		}
 		label := new_label()
 		labels[k] = label
-		fmt.println("GRAMMAR NODE | PATT", k, v)
 		insns, err := compile_pattern(v);if err {
 			return nil, err
 		}
-		fmt.println("GRAMMAR NODE | LABELS", len(insns))
 		append(&code, label)
 		append(&code, ..insns[:])
 		append(&code, Return{})
 	}
 
-	fmt.println("GRAMMAR NODE | POST LABELS CODE", len(code))
 	// resolve calls to OpenCall and do tail call optimization
 	next: Instruction
 	for i := 0; i < len(code); i += 1 {
@@ -434,7 +426,6 @@ compile_grammar_node :: proc(p: ^GrammarNode) -> (Program, bool) {
 
 	append(&code, LEnd)
 
-	fmt.println(len(code))
 	return code, false
 }
 

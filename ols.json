@@ -1,13 +1,14 @@
 {
 	"collections": [
-		{ "name": "core", "path": "/Users/kakurega/Developer/oss/Odin/core" }
+		{ "name": "core", "path": "/Users/kakurega/Developer/oss/Odin/core" },
+		{ "name": "shared", "path": "/Users/kakurega/Developer/oss/Odin/shared" }
 	],
 	"enable_semantic_tokens": true,
 	"enable_document_symbols": true,
 	"enable_hover": true,
 	"enable_snippets": true,
 	"enable_inlay_hints": true,
-	"checker_args": "-strict-style -vet -vet-style",
+	"checker_args": "-strict-style -vet -vet-using-param -vet-style -vet-semicolon",
 	"verbose": true
 }
 

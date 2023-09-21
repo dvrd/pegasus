@@ -13,7 +13,9 @@ re_init :: proc() {
 	parser = encode(prog)
 }
 
+count := 0
 re_compile :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
+	count += 1
 	#partial switch NonTerm(root.id) {
 	case .Pattern:
 		p = re_compile(memo.capture_child(root, 0), s)
@@ -30,14 +32,18 @@ re_compile :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
 		}
 		p = grammar(first, nonterms)
 	case .Expression:
-		alternations := make([dynamic]Pattern, memo.capture_num_children(root))
+		alternations := make(
+			[dynamic]Pattern,
+			0,
+			memo.capture_num_children(root),
+		)
 		iter, state := memo.capture_child_iterator(root, 0)
 		for c in iter(state) {
 			append(&alternations, re_compile(c, s))
 		}
 		p = or(..alternations[:])
 	case .Sequence:
-		concats := make([dynamic]Pattern, memo.capture_num_children(root))
+		concats := make([dynamic]Pattern, 0, memo.capture_num_children(root))
 		iter, state := memo.capture_child_iterator(root, 0)
 		for c in iter(state) {
 			append(&concats, re_compile(c, s))
@@ -111,7 +117,6 @@ re_compile :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
 	case .Identifier:
 		p = non_term(parseId(root, s))
 	}
-	fmt.println(root.id, p)
 	return p
 }
 
@@ -182,7 +187,6 @@ compileSet :: proc(root: ^memo.Capture, s: string) -> ^charset.Set {
 re_Compile :: proc(s: string) -> (Pattern, bool) {
 	re_init()
 
-	fmt.println("re_Compile s", s)
 	reader := new(strings.Reader)
 	defer free(reader)
 	strings.reader_init(reader, s)
@@ -195,7 +199,6 @@ re_Compile :: proc(s: string) -> (Pattern, bool) {
 
 	child := memo.capture_child(ast, 0)
 	compilation := re_compile(child, s)
-	fmt.println("re_Compile AST", ast)
 	return compilation, false
 }
 
