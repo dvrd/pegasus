@@ -60,10 +60,10 @@ EndOfFile <- !.
 - [x] Implement VM
 - [x] Fix encoding issues
 - [x] Get regex based syntax for parsing `.peg`
-- [] Improve Charset abstraction using Odin `bit_set`
+- [ ] Improve Charset abstraction using Odin `bit_set`
 - [x] Fix issue with re not compiling string grammars
-- [] Create examples for the library
+- [ ] Create examples for the library
 - [x] Add API to parse specific grammars
-- [] Add a CLI to interface with the grammars to parse
-- [] Figure out captures
+- [ ] Add a CLI to interface with the grammars to parse
+- [ ] Figure out captures
 
