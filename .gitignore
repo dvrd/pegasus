@@ -1,6 +1,11 @@
 pegasus
-bin
+
 *.dSYM
 *.ll
 *.bin
-.task
+
+bin/
+thoughts/
+
+.task/
+.logs/
