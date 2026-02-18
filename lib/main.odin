@@ -31,11 +31,17 @@ EndOfLine <- '\r\n' / '\n' / '\r'
 EndOfFile <- !.
 	`
 	subject := "23 + 2 +(1* 2) ^ 2"
-	is_match, pos, captures, _ := match(grammar, subject)
+	is_match, pos, captures, errs := match(grammar, subject)
+	if len(errs) > 0 {
+		for e in errs {
+			log.error("parse error at position", e.pos, ":", e.message)
+		}
+		return
+	}
 	if is_match {
 		log.success("matched til position", pos, "|", subject[:pos])
 		log.info(captures)
 	} else {
-		log.error("matched til position", pos, "|", subject[:pos])
+		log.warning("no match — consumed til position", pos, "|", subject[:pos])
 	}
 }

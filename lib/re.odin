@@ -789,3 +789,171 @@ test_match_error_whitespace_only :: proc(t: ^testing.T) {
 
 	expect_match_error(t, "   \t\n  ", "whitespace-only grammar")
 }
+
+// --- Additional PEG operator tests ---
+
+@(test)
+test_match_comment_in_grammar :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Comments start with # and extend to end of line
+	gram := `
+# This is a comment
+A <- 'hello' # inline comment
+`
+	expect_match(t, gram, "hello", true, 5, "comment in grammar")
+}
+
+@(test)
+test_match_end_of_file :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// !. matches only at end of input
+	gram := `
+A <- 'hi' !.
+`
+	expect_match(t, gram, "hi", true, 2, "EndOfFile succeeds at end")
+	expect_match(t, gram, "hix", false, -1, "EndOfFile fails with trailing chars")
+}
+
+@(test)
+test_match_mutual_recursion :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// A and B call each other: matched parentheses
+	gram := `
+A <- '(' B ')' / 'x'
+B <- A
+`
+	expect_match(t, gram, "x", true, 1, "mutual recursion base case")
+	expect_match(t, gram, "(x)", true, 3, "mutual recursion one level")
+	expect_match(t, gram, "((x))", true, 5, "mutual recursion two levels")
+}
+
+@(test)
+test_match_nested_captures :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Outer capture wraps inner capture
+	gram := `
+A <- { 'a' { 'b' } 'c' }
+`
+	is_match, pos, captures, errs := match(gram, "abc")
+	testing.expect(t, is_match, "nested captures should match")
+	testing.expect(t, pos == 3, fmt.tprintf("expected pos=3, got %d", pos))
+	testing.expect(t, len(errs) == 0, "should have no errors")
+	testing.expect(t, captures != nil, "captures should not be nil")
+}
+
+@(test)
+test_match_plus_single_char :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	gram := `
+A <- 'x'+
+`
+	expect_match(t, gram, "x", true, 1, "plus matches single char")
+	expect_match(t, gram, "xxx", true, 3, "plus matches multiple chars")
+	expect_match(t, gram, "y", false, -1, "plus fails on wrong char")
+}
+
+@(test)
+test_match_calculator_integration :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Full calculator grammar from README — integration test
+	gram := `
+Expr      <- Space SubOp
+SubOp     <- AddOp (Sub AddOp)*
+AddOp     <- DivOp (Add DivOp)*
+DivOp     <- MulOp (Div MulOp)*
+MulOp     <- PowOp (Mul PowOp)*
+PowOp     <- Term (Pow Term)*
+Term      <- Atom / OParen Expr CParen
+Pow       <- '^' Space
+Mul       <- '*' Space
+Div       <- '/' Space
+Add       <- '+' Space
+Sub       <- '-' Space
+OParen    <- '(' Space
+CParen    <- ')' Space
+Atom      <- Numeral
+Numeral   <- Number Space
+Number    <- [0-9]+
+Space     <- (' ' / '\t' / EndOfLine)*
+EndOfLine <- '\r\n' / '\n' / '\r'
+EndOfFile <- !.
+`
+	expect_match(t, gram, "42", true, 2, "calculator: simple number")
+	expect_match(t, gram, "1 + 2", true, 5, "calculator: addition")
+	expect_match(t, gram, "3 * (4 + 5)", true, 11, "calculator: parens")
+	expect_match(t, gram, "2 ^ 3 + 1", true, 9, "calculator: power and add")
+	expect_match(t, gram, "10 / 2 * 3 - 1 + 7", true, 18, "calculator: complex expr")
+}
+
+@(test)
+test_match_dot_any_single :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Single dot matches exactly one character
+	gram := `
+A <- .
+`
+	expect_match(t, gram, "x", true, 1, "dot matches single char")
+	expect_match(t, gram, "", false, -1, "dot fails on empty input")
+}
+
+@(test)
+test_match_alternation_priority :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// PEG ordered choice: first match wins
+	gram := `
+A <- 'abc' / 'ab' / 'a'
+`
+	expect_match(t, gram, "abc", true, 3, "ordered choice picks longest first match 'abc'")
+	expect_match(t, gram, "ab", true, 2, "ordered choice falls through to 'ab'")
+	expect_match(t, gram, "a", true, 1, "ordered choice falls through to 'a'")
+}
+
+@(test)
+test_match_multiline_grammar :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Multiple rules with whitespace handling
+	gram := `
+List    <- Item (',' Space Item)*
+Item    <- [a-zA-Z]+
+Space   <- ' '*
+`
+	expect_match(t, gram, "foo", true, 3, "multiline: single item")
+	expect_match(t, gram, "foo, bar", true, 8, "multiline: two items")
+	expect_match(t, gram, "a, b, c", true, 7, "multiline: three items")
+}
