@@ -1,6 +1,10 @@
+#+feature dynamic-literals
 package pegasus
 
 import "charset"
+import "core:fmt"
+import "core:mem/virtual"
+import "core:testing"
 
 // Nodes with trees larger than this size will not be inlined.
 InlineThreshold :: 100
@@ -288,4 +292,375 @@ optimize :: proc(p: ^Program) {
 		}
 		i += 1
 	}
+}
+
+// --- Tests ---
+
+@(test)
+test_combine_two_single_literals :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p1 := literal("a")
+	p2 := literal("b")
+	s, ok := combine(p1, p2)
+	testing.expect(t, ok, "combine two single-char literals should succeed")
+	testing.expect(t, charset.has(s, 'a'), "combined set should contain 'a'")
+	testing.expect(t, charset.has(s, 'b'), "combined set should contain 'b'")
+	testing.expect(t, !charset.has(s, 'c'), "combined set should not contain 'c'")
+}
+
+@(test)
+test_combine_literal_and_class :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p1 := literal("x")
+	p2 := set(charset.range('a', 'c'))
+	s, ok := combine(p1, p2)
+	testing.expect(t, ok, "combine literal + class should succeed")
+	testing.expect(t, charset.has(s, 'x'), "combined set should contain 'x'")
+	testing.expect(t, charset.has(s, 'a'), "combined set should contain 'a'")
+	testing.expect(t, charset.has(s, 'c'), "combined set should contain 'c'")
+}
+
+@(test)
+test_combine_class_and_literal :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p1 := set(charset.range('0', '9'))
+	p2 := literal("z")
+	s, ok := combine(p1, p2)
+	testing.expect(t, ok, "combine class + literal should succeed")
+	testing.expect(t, charset.has(s, '0'), "combined set should contain '0'")
+	testing.expect(t, charset.has(s, 'z'), "combined set should contain 'z'")
+}
+
+@(test)
+test_combine_two_classes :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p1 := set(charset.range('a', 'c'))
+	p2 := set(charset.range('x', 'z'))
+	s, ok := combine(p1, p2)
+	testing.expect(t, ok, "combine two classes should succeed")
+	testing.expect(t, charset.has(s, 'a'), "combined set should contain 'a'")
+	testing.expect(t, charset.has(s, 'z'), "combined set should contain 'z'")
+	testing.expect(t, !charset.has(s, 'm'), "combined set should not contain 'm'")
+}
+
+@(test)
+test_combine_multi_char_literal_fails :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p1 := literal("ab")
+	p2 := literal("c")
+	_, ok := combine(p1, p2)
+	testing.expect(t, !ok, "combine multi-char literal should fail")
+}
+
+@(test)
+test_combine_incompatible_types_fails :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p1 := any(1)
+	p2 := literal("a")
+	_, ok := combine(p1, p2)
+	testing.expect(t, !ok, "combine DotNode + literal should fail")
+}
+
+@(test)
+test_get_pattern_optional_of_star_collapses :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// optional(star(x)) should collapse to star(x)
+	inner := star(literal("a"))
+	p := optional(inner)
+	result := get_pattern(p)
+	_, is_star := result.(^StarNode)
+	testing.expect(t, is_star, "optional(star(x)) should collapse to StarNode")
+}
+
+@(test)
+test_get_pattern_seq_with_empty_right :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// seq(literal("a"), empty) should return literal("a")
+	empty_node: Pattern = new(EmptyNode)
+	p := concat(literal("a"), empty_node)
+	result := get_pattern(p)
+	lit, is_lit := result.(^LiteralNode)
+	testing.expect(t, is_lit, "seq(x, empty) should return x")
+	if is_lit {
+		testing.expect(t, lit.str == "a", fmt.tprintf("expected 'a', got '%s'", lit.str))
+	}
+}
+
+@(test)
+test_get_pattern_seq_with_empty_left :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// seq(empty, literal("b")) should return literal("b")
+	empty_node: Pattern = new(EmptyNode)
+	p := concat(empty_node, literal("b"))
+	result := get_pattern(p)
+	lit, is_lit := result.(^LiteralNode)
+	testing.expect(t, is_lit, "seq(empty, x) should return x")
+	if is_lit {
+		testing.expect(t, lit.str == "b", fmt.tprintf("expected 'b', got '%s'", lit.str))
+	}
+}
+
+@(test)
+test_get_pattern_alt_with_empty_right_becomes_optional :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// alt(literal("a"), empty) — the empty right triggers optional(left)
+	empty_node: Pattern = new(EmptyNode)
+	alt_node := new(AltNode)
+	alt_node.left = literal("a")
+	alt_node.right = empty_node
+	p: Pattern = alt_node
+	result := get_pattern(p)
+	_, is_opt := result.(^OptionalNode)
+	testing.expect(t, is_opt, "alt(x, empty) should become optional(x)")
+}
+
+@(test)
+test_get_pattern_nonterm_inlined :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// NonTermNode with inlined pattern should return the inlined pattern.
+	nt := new(NonTermNode)
+	nt.name = "Foo"
+	nt.inlined = literal("bar")
+	p: Pattern = nt
+	result := get_pattern(p)
+	lit, is_lit := result.(^LiteralNode)
+	testing.expect(t, is_lit, "inlined NonTermNode should return inlined pattern")
+	if is_lit {
+		testing.expect(t, lit.str == "bar", fmt.tprintf("expected 'bar', got '%s'", lit.str))
+	}
+}
+
+@(test)
+test_get_pattern_passthrough :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Patterns that don't match any optimization case return unchanged.
+	p := literal("hello")
+	result := get_pattern(p)
+	_, is_lit := result.(^LiteralNode)
+	testing.expect(t, is_lit, "literal should pass through get_pattern unchanged")
+}
+
+@(test)
+test_next_insn_skips_labels_and_nops :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	prog := []Instruction{Nop{}, Label{1}, Nop{}, Char{'x'}}
+	insn, ok := next_insn(prog)
+	testing.expect(t, ok, "should find instruction after labels/nops")
+	ch, is_char := insn.(Char)
+	testing.expect(t, is_char, "next instruction should be Char")
+	if is_char {
+		testing.expect(t, ch.byte == 'x', fmt.tprintf("expected 'x', got '%c'", ch.byte))
+	}
+}
+
+@(test)
+test_next_insn_empty_program :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	prog := []Instruction{}
+	_, ok := next_insn(prog)
+	testing.expect(t, !ok, "empty program should return false")
+}
+
+@(test)
+test_next_insn_only_labels_nops :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	prog := []Instruction{Nop{}, Label{1}, Nop{}}
+	_, ok := next_insn(prog)
+	testing.expect(t, !ok, "program with only labels/nops should return false")
+}
+
+@(test)
+test_next_insn_label_reports_label :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	prog := []Instruction{Label{1}, Char{'a'}}
+	idx, had_label := next_insn_label(prog)
+	testing.expect(t, had_label, "should report label was seen")
+	testing.expect(t, idx == 1, fmt.tprintf("expected idx=1, got %d", idx))
+}
+
+@(test)
+test_next_insn_label_no_label :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	prog := []Instruction{Nop{}, Char{'a'}}
+	idx, had_label := next_insn_label(prog)
+	testing.expect(t, !had_label, "should report no label seen")
+	testing.expect(t, idx == 1, fmt.tprintf("expected idx=1, got %d", idx))
+}
+
+@(test)
+test_optimize_head_fail_char :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Choice + Char should become TestChar + Nop
+	lbl := Label{99}
+	prog := Program{Choice{lbl}, Char{'a'}, Commit{lbl}, lbl}
+	optimize(&prog)
+
+	_, is_test_char := prog[0].(TestChar)
+	testing.expect(t, is_test_char, "Choice+Char should be optimized to TestChar")
+	_, is_nop := prog[1].(Nop)
+	testing.expect(t, is_nop, "Char after Choice should become Nop")
+}
+
+@(test)
+test_optimize_head_fail_set :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Choice + Set should become TestSet + Nop
+	lbl := Label{99}
+	cs := charset.range('a', 'z')
+	prog := Program{Choice{lbl}, Set{cs}, Commit{lbl}, lbl}
+	optimize(&prog)
+
+	_, is_test_set := prog[0].(TestSet)
+	testing.expect(t, is_test_set, "Choice+Set should be optimized to TestSet")
+	_, is_nop := prog[1].(Nop)
+	testing.expect(t, is_nop, "Set after Choice should become Nop")
+}
+
+@(test)
+test_optimize_head_fail_any :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Choice + Any should become TestAny + Nop
+	lbl := Label{99}
+	prog := Program{Choice{lbl}, Any{1}, Commit{lbl}, lbl}
+	optimize(&prog)
+
+	_, is_test_any := prog[0].(TestAny)
+	testing.expect(t, is_test_any, "Choice+Any should be optimized to TestAny")
+	_, is_nop := prog[1].(Nop)
+	testing.expect(t, is_nop, "Any after Choice should become Nop")
+}
+
+@(test)
+test_optimize_jump_to_return :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Jump to a label that points to Return should become Return
+	lbl := Label{50}
+	prog := Program{Jump{lbl}, lbl, Return{}}
+	optimize(&prog)
+
+	_, is_return := prog[0].(Return)
+	testing.expect(t, is_return, "Jump to Return should be replaced with Return")
+}
+
+@(test)
+test_optimize_jump_to_fail :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Jump to a label that points to Fail should become Fail
+	lbl := Label{51}
+	prog := Program{Jump{lbl}, lbl, Fail{}}
+	optimize(&prog)
+
+	_, is_fail := prog[0].(Fail)
+	testing.expect(t, is_fail, "Jump to Fail should be replaced with Fail")
+}
+
+@(test)
+test_optimize_end_to_end_alternation :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Compile 'a' / 'b' and verify the optimizer produces a Set instruction.
+	// Two single-char literals should combine into a single Set via combine().
+	p := or(literal("a"), literal("b"))
+	prog, err := compile(p)
+	testing.expect(t, !err, "compile alternation should not error")
+
+	// The combined alternation should produce exactly one Set instruction.
+	set_count := 0
+	for insn in prog {
+		if _, ok := insn.(Set); ok {
+			set_count += 1
+		}
+	}
+	testing.expect(t, set_count == 1, fmt.tprintf("expected 1 Set instruction from combined 'a'/'b', got %d", set_count))
 }
