@@ -1,6 +1,7 @@
 package input
 
 import "core:fmt"
+import "core:mem/virtual"
 import "core:strings"
 import "core:testing"
 
@@ -103,6 +104,11 @@ pos :: proc(i: ^Input) -> int {
 
 @(test)
 test_input :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
 	r := new(strings.Reader)
 	ok: bool
 
@@ -110,37 +116,107 @@ test_input :: proc(t: ^testing.T) {
 	i := new_input(r)
 
 	b, _ := peek(&i)
-	msg := fmt.sbprintf(&strings.Builder{}, "incorrect peek got %c", b)
+	msg := fmt.tprintf("incorrect peek got %c", b)
 	testing.expect(t, b == 'f', msg)
 
 	advance(&i, 1)
 	b, _ = peek(&i)
-	msg = fmt.sbprintf(&strings.Builder{}, "incorrect peek got %c", b)
+	msg = fmt.tprintf("incorrect peek got %c", b)
 	testing.expect(t, b == 'o', msg)
 
 	advance(&i, 1)
 	b, _ = peek(&i)
-	msg = fmt.sbprintf(&strings.Builder{}, "incorrect peek got %c", b)
+	msg = fmt.tprintf("incorrect peek got %c", b)
 	testing.expect(t, b == 'o', msg)
 
 	slice: []byte = {0, 0, 0}
 	strings.reader_read_at(&i.r, slice, 4)
-	msg = fmt.sbprintf(
-		&strings.Builder{},
-		"incorrect slice, got %s",
-		string(slice),
-	)
+	msg = fmt.tprintf("incorrect slice, got %s", string(slice))
 	testing.expect(t, string(slice) == "bar", msg)
 
 	success := advance(&i, 9)
 	testing.expect(t, success, "incorrect: couldn't advance by 9")
 
 	b, ok = peek(&i)
-	msg = fmt.sbprintf(
-		&strings.Builder{},
-		"peek past end of buffer should return false, got %c",
-		b,
-	)
+	msg = fmt.tprintf("peek past end of buffer should return false, got %c", b)
 	testing.expect(t, !ok, msg)
 
+}
+
+@(test)
+test_input_peek_before :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	r := new(strings.Reader)
+	strings.reader_init(r, "abcdef")
+	i := new_input(r)
+
+	// At position 0, peek_before should return false (no previous byte)
+	_, ok := peek_before(&i)
+	testing.expect(t, !ok, "peek_before at position 0 should return false")
+
+	// Advance to position 1, peek_before should return 'a'
+	advance(&i, 1)
+	b, ok2 := peek_before(&i)
+	testing.expect(t, ok2, "peek_before at position 1 should succeed")
+	testing.expect(t, b == 'a', fmt.tprintf("expected peek_before='a', got '%c'", b))
+
+	// Advance to position 3, peek_before should return 'c'
+	advance(&i, 2)
+	b, ok2 = peek_before(&i)
+	testing.expect(t, ok2, "peek_before at position 3 should succeed")
+	testing.expect(t, b == 'c', fmt.tprintf("expected peek_before='c', got '%c'", b))
+}
+
+@(test)
+test_input_seek_to :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	r := new(strings.Reader)
+	strings.reader_init(r, "hello world")
+	i := new_input(r)
+
+	// Seek to position 6 ('w')
+	ok := seek_to(&i, 6)
+	testing.expect(t, ok, "seek_to(6) should succeed")
+	b, ok2 := peek(&i)
+	testing.expect(t, ok2, "peek after seek should succeed")
+	testing.expect(t, b == 'w', fmt.tprintf("expected 'w' at position 6, got '%c'", b))
+
+	// Seek back to position 0
+	ok = seek_to(&i, 0)
+	testing.expect(t, ok, "seek_to(0) should succeed")
+	b, ok2 = peek(&i)
+	testing.expect(t, ok2, "peek after seek to 0 should succeed")
+	testing.expect(t, b == 'h', fmt.tprintf("expected 'h' at position 0, got '%c'", b))
+
+	// Seek past end
+	ok = seek_to(&i, 100)
+	testing.expect(t, !ok, "seek_to past end should return false")
+}
+
+@(test)
+test_input_slice :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	r := new(strings.Reader)
+	strings.reader_init(r, "hello world")
+	i := new_input(r)
+
+	// Read slice [0, 5) = "hello"
+	s := slice(&i, 0, 5)
+	testing.expect(t, string(s) == "hello", fmt.tprintf("expected 'hello', got '%s'", string(s)))
+
+	// Read slice [6, 11) = "world"
+	s2 := slice(&i, 6, 11)
+	testing.expect(t, string(s2[:5]) == "world", fmt.tprintf("expected 'world', got '%s'", string(s2[:5])))
 }

@@ -28,10 +28,14 @@ node_add :: proc(
 		nn.key = key
 		nn.max = value.high
 		nn.tstamp = tree.tstamp
+		nn.tree = tree
 		nn.height = 1
 		intervals := make([dynamic]^Interval)
 		append(&intervals, value)
-		nn.interval = &LazyInterval{intervals, nn}
+		li := new(LazyInterval)
+		li.ins = intervals
+		li.n = nn
+		nn.interval = li
 		return nn, nn.interval
 	}
 	node_apply_shifts(n)
@@ -133,8 +137,7 @@ node_remove_overlaps :: proc(n: ^Node, low, high: int) -> ^Node {
 	for i := 0; i < len(n.interval.ins); {
 		if interval_overlaps(n.interval.ins[i]^, low, high) {
 			n.interval.ins[i] = n.interval.ins[len(n.interval.ins) - 1]
-			n.interval.ins[len(n.interval.ins) - 1] = &Interval{}
-			new_interval := make([dynamic]^Interval, len(n.interval.ins) - 1)
+			new_interval := make([dynamic]^Interval, 0, len(n.interval.ins) - 1)
 			append(&new_interval, ..n.interval.ins[:len(n.interval.ins) - 1])
 			n.interval.ins = new_interval
 		} else {
@@ -158,21 +161,18 @@ node_remove_overlaps :: proc(n: ^Node, low, high: int) -> ^Node {
 	return n
 }
 
-node_allvals :: proc(n: ^Node, vals: []^Entry) -> []^Entry {
+node_allvals :: proc(n: ^Node, acc: ^[dynamic]^Entry) {
 	if n == nil {
-		return vals
+		return
 	}
 
-	new_vals := make([dynamic]^Entry)
-	append(&new_vals, ..node_allvals(n.left, vals))
+	node_allvals(n.left, acc)
 
 	for ins in n.interval.ins {
-		append(&new_vals, &ins.value)
+		append(acc, &ins.value)
 	}
 
-	append(&new_vals, ..node_allvals(n.right, vals))
-
-	return new_vals[:]
+	node_allvals(n.right, acc)
 }
 
 node_get_height :: proc(n: ^Node) -> int {

@@ -1,6 +1,9 @@
 package pegasus
 
 import "core:slice"
+import "core:testing"
+import "core:mem/virtual"
+import "core:fmt"
 import "memo"
 
 Stack :: struct {
@@ -84,9 +87,9 @@ stack_new :: proc() -> (s: ^Stack) {
 
 stack_reset :: proc(s: ^Stack) {
 	s.capt = nil
-	// need to complete remake the slice so that the underlying captures can be
-	// released to the garbage collector if the user has no references to them
-	// (unused stack entries shouldn't keep references to those captures).
+	// Free the old entries backing array before reallocating.
+	// Under arena allocation this is a no-op, but it's correct code regardless.
+	delete(s.entries)
 	s.entries = make([dynamic]StackEntry, 0, 4)
 }
 
@@ -144,4 +147,104 @@ stack_pushCapt :: proc(s: ^Stack, m: StackMemo) {
 
 stack_pushCheck :: proc(s: ^Stack, m: StackMemo) {
 	stack_push(s, StackEntry{stype = .Check, memoized = m})
+}
+
+@(test)
+test_stack_push_pop :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+
+	// Push three entries
+	stack_pushRet(s, 100)
+	stack_pushRet(s, 200)
+	stack_pushRet(s, 300)
+
+	// Pop in LIFO order
+	e3 := stack_pop(s, true)
+	testing.expect(t, e3 != nil, "pop should return entry")
+	testing.expect(t, e3.stype == .Ret, "expected Ret entry")
+	testing.expect(t, e3.ret == 300, fmt.tprintf("expected ret=300, got %d", e3.ret))
+
+	e2 := stack_pop(s, true)
+	testing.expect(t, e2 != nil, "pop should return entry")
+	testing.expect(t, e2.ret == 200, fmt.tprintf("expected ret=200, got %d", e2.ret))
+
+	e1 := stack_pop(s, true)
+	testing.expect(t, e1 != nil, "pop should return entry")
+	testing.expect(t, e1.ret == 100, fmt.tprintf("expected ret=100, got %d", e1.ret))
+
+	// Pop from empty stack
+	empty := stack_pop(s, true)
+	testing.expect(t, empty == nil, "pop from empty stack should return nil")
+}
+
+@(test)
+test_stack_peek :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+
+	// Peek empty stack
+	p := stack_peek(s)
+	testing.expect(t, p == nil, "peek on empty stack should return nil")
+
+	// Push and peek
+	stack_pushRet(s, 42)
+	p = stack_peek(s)
+	testing.expect(t, p != nil, "peek should return entry")
+	testing.expect(t, p.ret == 42, fmt.tprintf("expected peek ret=42, got %d", p.ret))
+
+	// Peek doesn't remove
+	p2 := stack_peek(s)
+	testing.expect(t, p2 != nil, "second peek should still return entry")
+	testing.expect(t, p2.ret == 42, "peek should not remove the entry")
+
+	// Push another, peek returns new top
+	stack_pushBacktrack(s, StackBacktrack{ip = 10, off = 20})
+	p3 := stack_peek(s)
+	testing.expect(t, p3 != nil, "peek should return new top")
+	testing.expect(t, p3.stype == .Btrack, "expected Btrack entry on top")
+}
+
+@(test)
+test_stack_entry_types :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+
+	// Push each entry type
+	stack_pushRet(s, 1)
+	stack_pushBacktrack(s, StackBacktrack{ip = 10, off = 20})
+	stack_pushMemo(s, StackMemo{id = 5, pos = 30, count = 1})
+	stack_pushCapt(s, StackMemo{id = 7, pos = 40, count = 0})
+	stack_pushCheck(s, StackMemo{id = 9, pos = 50, count = 2})
+
+	// Pop and verify types in reverse order
+	e5 := stack_pop(s, false)
+	testing.expect(t, e5.stype == .Check, fmt.tprintf("expected Check, got %v", e5.stype))
+
+	e4 := stack_pop(s, false)
+	testing.expect(t, e4.stype == .Capt, fmt.tprintf("expected Capt, got %v", e4.stype))
+
+	e3 := stack_pop(s, false)
+	testing.expect(t, e3.stype == .Memo, fmt.tprintf("expected Memo, got %v", e3.stype))
+	testing.expect(t, e3.memoized.id == 5, fmt.tprintf("expected memo id=5, got %d", e3.memoized.id))
+
+	e2 := stack_pop(s, false)
+	testing.expect(t, e2.stype == .Btrack, fmt.tprintf("expected Btrack, got %v", e2.stype))
+	testing.expect(t, e2.btrack.ip == 10, fmt.tprintf("expected btrack ip=10, got %d", e2.btrack.ip))
+	testing.expect(t, e2.btrack.off == 20, fmt.tprintf("expected btrack off=20, got %d", e2.btrack.off))
+
+	e1 := stack_pop(s, false)
+	testing.expect(t, e1.stype == .Ret, fmt.tprintf("expected Ret, got %v", e1.stype))
 }

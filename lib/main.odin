@@ -1,6 +1,6 @@
 package pegasus
 
-import "log"
+import log "log"
 
 main :: proc() {
 	grammar := `

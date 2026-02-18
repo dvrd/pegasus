@@ -2,6 +2,7 @@ package charset
 
 import "core:fmt"
 import "core:math/bits"
+import "core:mem/virtual"
 import "core:strings"
 import "core:testing"
 
@@ -205,6 +206,11 @@ in_set :: proc(set: ^Set, included, not_included: []byte, t: ^testing.T) {
 
 @(test)
 test_set :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
 	included: [6]byte = {'a', 'b', 'c', 'd', '{', '}'}
 	not_included: [5]byte = {'x', 'y', 'z', '[', ']'}
 
@@ -215,6 +221,11 @@ test_set :: proc(t: ^testing.T) {
 
 @(test)
 test_range_union :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
 	set := range('a', 'z')
 	set = add(set, range('A', 'Z'))
 
@@ -226,6 +237,11 @@ test_range_union :: proc(t: ^testing.T) {
 
 @(test)
 test_complement :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
 	included := []byte{'a', 'b', 'c', 'd', '{', '}'}
 	not_included := []byte{'x', 'y', 'z', '[', ']'}
 
@@ -236,6 +252,11 @@ test_complement :: proc(t: ^testing.T) {
 
 @(test)
 test_big_set :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
 	included := []byte{200, 201, 203}
 	not_included := []byte{0, 1, 2}
 
@@ -243,4 +264,64 @@ test_big_set :: proc(t: ^testing.T) {
 	set := range(128, u8(r))
 
 	in_set(set, included, not_included, t)
+}
+
+@(test)
+test_charset_sub :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Create set {a, b, c, d, e} and subtract {b, d}
+	s1 := new_charset([]byte{'a', 'b', 'c', 'd', 'e'})
+	s2 := new_charset([]byte{'b', 'd'})
+	result := sub(s1, s2)
+
+	// Should have {a, c, e}
+	testing.expect(t, has(result, 'a'), "result should contain 'a'")
+	testing.expect(t, !has(result, 'b'), "result should not contain 'b'")
+	testing.expect(t, has(result, 'c'), "result should contain 'c'")
+	testing.expect(t, !has(result, 'd'), "result should not contain 'd'")
+	testing.expect(t, has(result, 'e'), "result should contain 'e'")
+}
+
+@(test)
+test_charset_size :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Empty set
+	empty := new_charset([]byte{})
+	testing.expect(t, size(empty) == 0, fmt.tprintf("expected size 0, got %d", size(empty)))
+
+	// Single char
+	single := new_charset([]byte{'x'})
+	testing.expect(t, size(single) == 1, fmt.tprintf("expected size 1, got %d", size(single)))
+
+	// Range a-z = 26 chars
+	az := range('a', 'z')
+	testing.expect(t, size(az) == 26, fmt.tprintf("expected size 26, got %d", size(az)))
+
+	// Union of two ranges
+	both := add(range('a', 'z'), range('A', 'Z'))
+	testing.expect(t, size(both) == 52, fmt.tprintf("expected size 52, got %d", size(both)))
+}
+
+@(test)
+test_charset_string :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// A simple range should produce a readable string
+	s := range('a', 'c')
+	str := string_from_charset(s)
+	testing.expect(t, len(str) > 0, "string_from_charset should produce non-empty string")
+	// Should contain braces
+	testing.expect(t, str[0] == '{', fmt.tprintf("expected string to start with '{', got '%s'", str))
+	testing.expect(t, str[len(str) - 1] == '}', fmt.tprintf("expected string to end with '}', got '%s'", str))
 }

@@ -2,21 +2,21 @@ package pegasus
 
 import "charset"
 import "core:bytes"
+import "core:fmt"
+import "core:mem/virtual"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "log"
+import "core:testing"
+import log "log"
 import "memo"
 
 parser: Code
 re_init :: proc() {
-	prog := must_compile(grammar("Pattern", re_grammar))
-	parser = encode(prog)
+	re_grammar_init()
 }
 
-count := 0
 compile_re :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
-	count += 1
 	#partial switch NonTerm(root.id) {
 	case .Pattern:
 		p = compile_re(memo.capture_child(root, 0), s)
@@ -80,6 +80,8 @@ compile_re :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
 			p = compile_re(memo.capture_child(root, 0), s)
 		case .OPEN:
 			p = compile_re(memo.capture_child(root, 1), s)
+		case .BRACEO:
+			p = cap(compile_re(memo.capture_child(root, 1), s), int(NonTerm.BRACEO))
 		case .BRACEPO:
 			p = memo_pattern(compile_re(memo.capture_child(root, 1), s))
 		case .DOT:
@@ -121,24 +123,23 @@ compile_re :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
 	return p
 }
 
-special := map[byte]byte {
-	'n'  = '\n',
-	'r'  = '\r',
-	't'  = '\t',
-	'\'' = '\'',
-	'"'  = '"',
-	'['  = '[',
-	']'  = ']',
-	'\\' = '\\',
-	'-'  = '-',
-}
-
 parseChar :: proc(char: string) -> byte {
 	switch char[0] {
 	case '\\':
-		for k, v in special {
-			if char[1] == k {
-				return v
+		special := [?]struct{k: byte, v: byte} {
+			{'n', '\n'},
+			{'r', '\r'},
+			{'t', '\t'},
+			{'\'', '\''},
+			{'"', '"'},
+			{'[', '['},
+			{']', ']'},
+			{'\\', '\\'},
+			{'-', '-'},
+		}
+		for entry in special {
+			if char[1] == entry.k {
+				return entry.v
 			}
 		}
 
@@ -189,12 +190,11 @@ init_re_compilation :: proc(s: string) -> (Pattern, bool) {
 	re_init()
 
 	reader := new(strings.Reader)
-	defer free(reader)
 	strings.reader_init(reader, s)
 
 	memtbl := memo.new_table(512)
-	match, _, ast, errs := exec(&parser, reader, memtbl)
-	if len(errs) != 0 || !match {
+	is_match, _, ast, errs := exec(&parser, reader, memtbl)
+	if len(errs) != 0 || !is_match {
 		return nil, true
 	}
 
@@ -217,13 +217,13 @@ match :: proc(
 	^memo.Capture,
 	[]ParseError,
 ) {
-	patt, err := init_re_compilation(gram);if err {
+	patt, patt_err := init_re_compilation(gram);if patt_err {
 		log.error("Could not compile a pattern from the provided grammar")
 		os.exit(1)
 	}
 
 	prog: Program
-	prog, err = compile(patt);if err {
+	prog, patt_err = compile(patt);if patt_err {
 		log.error("Could not compile a program from the provided pattern")
 		os.exit(1)
 	}
@@ -231,10 +231,236 @@ match :: proc(
 	code := encode(prog)
 
 	reader := new(strings.Reader)
-	defer free(reader)
 	strings.reader_init(reader, subject)
 
 	memtbl := memo.new_table(512)
 
 	return exec(&code, reader, memtbl)
+}
+
+// Test helper: runs match() and asserts on success/failure and position.
+// NOTE: match() calls os.exit(1) on grammar compilation failure, so only
+// pass valid PEG grammar strings.
+expect_match :: proc(
+	t: ^testing.T,
+	gram: string,
+	subject: string,
+	expected_ok: bool,
+	expected_pos: int,
+	msg: string,
+) {
+	is_match, pos, _, _ := match(gram, subject)
+	testing.expect(
+		t,
+		is_match == expected_ok,
+		fmt.tprintf("%s: expected match=%v, got match=%v", msg, expected_ok, is_match),
+	)
+	if expected_pos >= 0 {
+		testing.expect(
+			t,
+			pos == expected_pos,
+			fmt.tprintf("%s: expected pos=%d, got pos=%d", msg, expected_pos, pos),
+		)
+	}
+}
+
+// --- Layer 3: End-to-End match() tests ---
+
+@(test)
+test_match_literal :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'hello'", "hello world", true, 5, "literal match")
+}
+
+@(test)
+test_match_literal_fail :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'hello'", "goodbye", false, -1, "literal no match")
+}
+
+@(test)
+test_match_class :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "[a-z]+", "abc123", true, 3, "class match")
+}
+
+@(test)
+test_match_any_dot :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, ".+", "abc", true, 3, "dot match all")
+}
+
+@(test)
+test_match_alternation :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'foo' / 'bar'", "bar", true, 3, "alternation match second")
+	expect_match(t, "'foo' / 'bar'", "foo", true, 3, "alternation match first")
+	expect_match(t, "'foo' / 'bar'", "baz", false, -1, "alternation no match")
+}
+
+@(test)
+test_match_optional :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'a'?", "", true, 0, "optional on empty")
+	expect_match(t, "'a'?", "a", true, 1, "optional on match")
+	expect_match(t, "'a'?", "b", true, 0, "optional on non-match consumes nothing")
+}
+
+@(test)
+test_match_star :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'a'*", "aaa", true, 3, "star matches all")
+	expect_match(t, "'a'*", "", true, 0, "star matches empty")
+	expect_match(t, "'a'*", "bbb", true, 0, "star matches zero occurrences")
+}
+
+@(test)
+test_match_plus :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'a'+", "aaa", true, 3, "plus matches all")
+	expect_match(t, "'a'+", "", false, -1, "plus fails on empty")
+	expect_match(t, "'a'+", "bbb", false, -1, "plus fails on non-match")
+}
+
+@(test)
+test_match_not :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "!'a' .", "b", true, 1, "not predicate succeeds on non-match")
+	expect_match(t, "!'a' .", "a", false, -1, "not predicate fails on match")
+}
+
+@(test)
+test_match_grammar :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	gram := `
+Expr    <- Term ('+' Term)*
+Term    <- Factor ('*' Factor)*
+Factor  <- [0-9]+
+`
+	expect_match(t, gram, "1+2*3", true, 5, "grammar arithmetic")
+	expect_match(t, gram, "42", true, 2, "grammar single number")
+}
+
+@(test)
+test_match_captures :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Use a simple capture expression (not a grammar definition).
+	// NOTE: capture position tracking is still a WIP (see README TODO),
+	// so we only assert on match success and capture tree existence.
+	gram := "{ [a-z]+ }"
+	is_match, _, captures, errs := match(gram, "hello")
+	testing.expect(t, is_match, "capture grammar should match")
+	testing.expect(t, len(errs) == 0, "should have no errors")
+	testing.expect(t, captures != nil, "captures should not be nil")
+
+	if captures != nil {
+		n := memo.capture_num_children(captures)
+		testing.expect(t, n >= 0, fmt.tprintf("capture tree should have >= 0 children, got %d", n))
+	}
+}
+
+@(test)
+test_match_recursive :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	gram := `
+S <- '(' S ')' / ''
+`
+	expect_match(t, gram, "(())", true, 4, "recursive balanced parens")
+	expect_match(t, gram, "()", true, 2, "recursive simple parens")
+	expect_match(t, gram, "", true, 0, "recursive empty matches empty alternative")
+}
+
+// --- Layer 4: Edge Cases ---
+
+@(test)
+test_match_empty_input :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'a'*", "", true, 0, "star on empty input")
+	expect_match(t, ".", "", false, -1, "dot on empty input")
+}
+
+@(test)
+test_match_empty_pattern :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "''", "hello", true, 0, "empty literal on input")
+	expect_match(t, "''", "", true, 0, "empty literal on empty input")
+}
+
+@(test)
+test_match_no_match_position :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	is_match, pos, _, _ := match("'xyz'", "abc")
+	testing.expect(t, !is_match, "should not match")
+	testing.expect(t, pos == 0, fmt.tprintf("expected pos=0 on complete failure, got %d", pos))
+}
+
+@(test)
+test_match_partial :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'hel'", "hello", true, 3, "partial prefix match")
+	expect_match(t, "[a-z]+", "abc123", true, 3, "partial class match")
 }

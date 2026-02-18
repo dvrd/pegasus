@@ -17,7 +17,7 @@ Interval :: struct {
 }
 
 error_to_string :: proc(e: ParseError) -> string {
-	return fmt.sbprintf(&strings.Builder{}, "%v: %s", e.pos, e.message)
+	return fmt.tprintf("%v: %s", e.pos, e.message)
 }
 
 // Exec executes the parsing program this virtual machine was created with. It

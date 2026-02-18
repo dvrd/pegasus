@@ -1,7 +1,6 @@
-package log
+package plog
 
 import "core:fmt"
-import "core:strings"
 
 RED :: "\e[1;31m%v\e[0m"
 GREEN :: "\e[1;32m%v\e[0m"
@@ -15,15 +14,18 @@ LogLevel :: enum {
 	Warning,
 }
 
-format := map[LogLevel]string {
-	.Error   = RED,
-	.Success = GREEN,
-	.Warning = YELLOW,
-	.Info    = BLUE,
+color_format :: proc(lvl: LogLevel) -> string {
+	switch lvl {
+	case .Error:   return RED
+	case .Success: return GREEN
+	case .Warning: return YELLOW
+	case .Info:    return BLUE
+	}
+	return BLUE
 }
 
 color :: proc(msg: string, lvl: LogLevel) -> string {
-	return fmt.sbprintf(&strings.Builder{}, format[lvl], msg)
+	return fmt.tprintf(color_format(lvl), msg)
 }
 
 info :: proc(args: ..any) {

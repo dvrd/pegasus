@@ -41,7 +41,7 @@ get_pattern :: proc(p: Pattern) -> Pattern {
 		// Optional of a Kleene star is unnecessary and we can remove the
 		// optional.
 		np := get_pattern(t.patt)
-		star, ok := np.(^StarNode);if ok {
+		_, ok := np.(^StarNode);if ok {
 			return np
 		}
 	case ^SeqNode:

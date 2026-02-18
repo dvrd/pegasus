@@ -1,10 +1,10 @@
+#+feature dynamic-literals
 package pegasus
 
 import "charset"
 import "core:encoding/json"
 import "core:fmt"
-import "core:slice"
-import "core:strings"
+import "core:mem/virtual"
 import "core:testing"
 
 // Code is the representation of VM bytecode.
@@ -64,135 +64,140 @@ encode :: proc(insns: Program) -> Code {
 			continue
 		case Char:
 			op = .Char
-			b := make([]byte, 1)
-			b[0] = byte(t.byte)
-			args = b
+			buf: [1]byte = {byte(t.byte)}
+			args = buf[:]
 		case Jump:
 			op = .Jump
-			args = encodeLabel(labels[t.lbl])
+			lbl := encodeLabel(labels[t.lbl])
+			args = lbl[:]
 		case Choice:
 			op = .Choice
-			args = encodeLabel(labels[t.lbl])
+			lbl := encodeLabel(labels[t.lbl])
+			args = lbl[:]
 		case Call:
 			op = .Call
-			args = encodeLabel(labels[t.lbl])
+			lbl := encodeLabel(labels[t.lbl])
+			args = lbl[:]
 		case Commit:
 			op = .Commit
-			args = encodeLabel(labels[t.lbl])
+			lbl := encodeLabel(labels[t.lbl])
+			args = lbl[:]
 		case Return:
 			op = .Return
 		case Fail:
 			op = .Fail
 		case Set:
 			op = .Set
-			args = encodeU8(addSet(&code, t.chars^))
+			buf := encodeU8(addSet(&code, t.chars^))
+			args = buf[:]
 		case Any:
 			op = .Any
-			b := make([]byte, 1)
-			b[0] = byte(t.n)
-			args = b
+			buf: [1]byte = {byte(t.n)}
+			args = buf[:]
 		case PartialCommit:
 			op = .PartialCommit
-			args = encodeLabel(labels[t.lbl])
+			lbl := encodeLabel(labels[t.lbl])
+			args = lbl[:]
 		case Span:
 			op = .Span
-			args = encodeU8(addSet(&code, t.chars^))
+			buf := encodeU8(addSet(&code, t.chars^))
+			args = buf[:]
 		case BackCommit:
 			op = .BackCommit
-			args = encodeLabel(labels[t.lbl])
+			lbl := encodeLabel(labels[t.lbl])
+			args = lbl[:]
 		case FailTwice:
 			op = .FailTwice
 		case Empty:
 			op = .Empty
-			b := make([]byte, 1)
-			b[0] = u8(t.op)
-			args = b
+			buf: [1]byte = {u8(t.op)}
+			args = buf[:]
 		case TestChar:
 			op = .TestChar
-			b := make([dynamic]byte)
-			append(&b, byte(t.byte))
-			append(&b, ..encodeLabel(labels[t.lbl]))
-			args = b[:]
+			lbl := encodeLabel(labels[t.lbl])
+			buf: [4]byte = {byte(t.byte), lbl[0], lbl[1], lbl[2]}
+			args = buf[:]
 		case TestCharNoChoice:
 			op = .TestCharNoChoice
-			b := make([dynamic]byte)
-			append(&b, byte(t.byte))
-			append(&b, ..encodeLabel(labels[t.lbl]))
-			args = b[:]
+			lbl := encodeLabel(labels[t.lbl])
+			buf: [4]byte = {byte(t.byte), lbl[0], lbl[1], lbl[2]}
+			args = buf[:]
 		case TestSet:
 			op = .TestSet
-			b := slice.to_dynamic(encodeU8(addSet(&code, t.chars)))
-			append(&b, ..encodeLabel(labels[t.lbl]))
-			args = b[:]
+			set_buf := encodeU8(addSet(&code, t.chars))
+			lbl := encodeLabel(labels[t.lbl])
+			buf: [4]byte = {set_buf[0], lbl[0], lbl[1], lbl[2]}
+			args = buf[:]
 		case TestSetNoChoice:
 			op = .TestSetNoChoice
-			b := slice.to_dynamic(encodeU8(addSet(&code, t.chars)))
-			append(&b, ..encodeLabel(labels[t.lbl]))
-			args = b[:]
+			set_buf := encodeU8(addSet(&code, t.chars))
+			lbl := encodeLabel(labels[t.lbl])
+			buf: [4]byte = {set_buf[0], lbl[0], lbl[1], lbl[2]}
+			args = buf[:]
 		case TestAny:
 			op = .TestAny
-			b := make([dynamic]byte)
-			append(&b, byte(t.n))
-			append(&b, ..encodeLabel(labels[t.lbl]))
-
-			args = b[:]
+			lbl := encodeLabel(labels[t.lbl])
+			buf: [4]byte = {byte(t.n), lbl[0], lbl[1], lbl[2]}
+			args = buf[:]
 		case CaptureBegin:
 			op = .CaptureBegin
-			args = encodeI16(t.id)
+			buf := encodeI16(t.id)
+			args = buf[:]
 		case CaptureEnd:
 			op = .CaptureEnd
 		case CaptureLate:
 			op = .CaptureLate
-			b := make([dynamic]byte)
-			append(&b, byte(t.back))
-			append(&b, ..encodeI16(t.id))
-			args = b[:]
+			id_buf := encodeI16(t.id)
+			buf: [3]byte = {byte(t.back), id_buf[0], id_buf[1]}
+			args = buf[:]
 		case CaptureFull:
 			op = .CaptureFull
-			b := make([dynamic]byte)
-			append(&b, byte(t.back))
-			append(&b, ..encodeI16(int(t.id)))
-			args = b[:]
+			id_buf := encodeI16(int(t.id))
+			buf: [3]byte = {byte(t.back), id_buf[0], id_buf[1]}
+			args = buf[:]
 		case MemoOpen:
 			op = .MemoOpen
-			b := slice.to_dynamic(encodeLabel(labels[t.lbl]))
-			append(&b, ..encodeI16(t.id))
-			args = b[:]
+			lbl := encodeLabel(labels[t.lbl])
+			id_buf := encodeI16(t.id)
+			buf: [5]byte = {lbl[0], lbl[1], lbl[2], id_buf[0], id_buf[1]}
+			args = buf[:]
 		case MemoClose:
 			op = .MemoClose
 		case MemoTreeOpen:
 			op = .MemoTreeOpen
-			b := slice.to_dynamic(encodeLabel(labels[t.lbl]))
-			append(&b, ..encodeI16(t.id))
-			args = b[:]
+			lbl := encodeLabel(labels[t.lbl])
+			id_buf := encodeI16(t.id)
+			buf: [5]byte = {lbl[0], lbl[1], lbl[2], id_buf[0], id_buf[1]}
+			args = buf[:]
 		case MemoTreeInsert:
 			op = .MemoTreeInsert
 		case MemoTree:
 			op = .MemoTree
 		case MemoTreeClose:
 			op = .MemoTreeClose
-			args = encodeI16(int(t.id))
+			buf := encodeI16(int(t.id))
+			args = buf[:]
 		case CheckBegin:
 			op = .CheckBegin
-			b := slice.to_dynamic(encodeI16(t.flag))
-			append(&b, ..encodeI16(t.id))
-			args = b[:]
+			flag_buf := encodeI16(t.flag)
+			id_buf := encodeI16(t.id)
+			buf: [4]byte = {flag_buf[0], flag_buf[1], id_buf[0], id_buf[1]}
+			args = buf[:]
 		case CheckEnd:
 			op = .CheckEnd
-			args = encodeU24(addChecker(&code, t.checker))
+			buf := encodeU24(addChecker(&code, t.checker))
+			args = buf[:]
 		case Error:
 			op = .Error
-			args = encodeU24(addError(&code, t.message))
+			buf := encodeU24(addError(&code, t.message))
+			args = buf[:]
 		case End:
 			op = .End
-			args = encodeBool(t.fail)
+			buf := encodeBool(t.fail)
+			args = buf[:]
 		case:
 			panic(
-				fmt.sbprintf(
-					&strings.Builder{},
-					"invalid instruction during encoding: %v",
-					t,
-				),
+				fmt.tprintf("invalid instruction during encoding: %v", t),
 			)
 		}
 		append(&code.insns, byte(op))
@@ -210,75 +215,52 @@ encode :: proc(insns: Program) -> Code {
 	return code
 }
 
-encodeU8 :: proc(x: uint) -> []byte {
+encodeU8 :: proc(x: uint) -> [1]byte {
 	if x >= 256 {
 		panic("U8 out of bounds")
 	}
-
-	b := make([]byte, 1)
-	b[0] = byte(x)
-	return b
+	return [1]byte{byte(x)}
 }
 
-encodeI8 :: proc(x: int) -> []byte {
+encodeI8 :: proc(x: int) -> [1]byte {
 	if x < -128 || x >= 128 {
 		panic("I8 out of bounds")
 	}
-
-	b := make([]byte, 1)
-	b[0] = byte(x)
-	return b
+	return [1]byte{byte(x)}
 }
 
-encodeU16 :: proc(x: uint) -> []byte {
+encodeU16 :: proc(x: uint) -> [2]byte {
 	if x >= (1 << 16) {
 		panic("U16 out of bounds")
 	}
-	b := make([]byte, 2)
-	b[0] = byte(u16(x))
-	b[1] = byte(u16(x) >> 8)
-	return b
+	return [2]byte{byte(u16(x)), byte(u16(x) >> 8)}
 }
 
-encodeI16 :: proc(x: int) -> []byte {
+encodeI16 :: proc(x: int) -> [2]byte {
 	if x < -(1 << 15) || x >= (1 << 15) {
 		panic("I16 out of bounds")
 	}
-
-	b := make([]byte, 2)
-	b[0] = byte(u16(x))
-	b[1] = byte(u16(x) >> 8)
-	return b
+	return [2]byte{byte(u16(x)), byte(u16(x) >> 8)}
 }
 
-encodeU24 :: proc(x: uint) -> []byte {
+encodeU24 :: proc(x: uint) -> [3]byte {
 	if x >= (1 << 24) {
 		panic("I24 out of bounds")
 	}
-
-	b := make([]byte, 4)
 	i1 := u16((x >> 16) & 0xff)
 	i2 := u16(x)
-	b[0] = byte(i1 >> 8)
-	b[1] = byte(i1)
-	b[2] = byte(i2)
-	b[3] = byte(i2 >> 8)
-
-	return b[1:4]
+	return [3]byte{byte(i1), byte(i2), byte(i2 >> 8)}
 }
 
-encodeLabel :: proc(x: uint) -> []byte {
+encodeLabel :: proc(x: uint) -> [3]byte {
 	return encodeU24(x)
 }
 
-encodeBool :: proc(x: bool) -> []byte {
-	b := make([]byte, 1)
+encodeBool :: proc(x: bool) -> [1]byte {
 	if x {
-		b[0] = 1
-		return b
+		return [1]byte{1}
 	}
-	b[0] = 0
-	return b
+	return [1]byte{0}
 }
 
 // Adds the set to the code's list of charsets, and returns the index it was
@@ -316,6 +298,11 @@ addChecker :: proc(code: ^Code, checker: Checker) -> uint {
 
 @(test)
 test_json :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
 	p := grammar(
 		"Expr",
 		map[string]Pattern{
@@ -363,7 +350,71 @@ test_json :: proc(t: ^testing.T) {
 		testing.expect(
 			t,
 			json_code.insns[i] == code.insns[i],
-			fmt.sbprintf(&strings.Builder{}, "Code byte %d does not match", i),
+			fmt.tprintf("Code byte %d does not match", i),
 		)
 	}
+}
+
+@(test)
+test_encode_decode_round_trip :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Test encodeU8 / decodeU8
+	buf_u8 := encodeU8(42)
+	testing.expect(t, decodeU8(buf_u8[:]) == 42, fmt.tprintf("U8 round-trip failed: got %d", decodeU8(buf_u8[:])))
+
+	buf_u8_zero := encodeU8(0)
+	testing.expect(t, decodeU8(buf_u8_zero[:]) == 0, "U8 round-trip for 0 failed")
+
+	buf_u8_max := encodeU8(255)
+	testing.expect(t, decodeU8(buf_u8_max[:]) == 255, "U8 round-trip for 255 failed")
+
+	// Test encodeI16 / decodeI16
+	buf_i16 := encodeI16(1234)
+	testing.expect(t, decodeI16(buf_i16[:]) == 1234, fmt.tprintf("I16 round-trip failed: got %d", decodeI16(buf_i16[:])))
+
+	buf_i16_neg := encodeI16(-100)
+	testing.expect(t, decodeI16(buf_i16_neg[:]) == -100, fmt.tprintf("I16 negative round-trip failed: got %d", decodeI16(buf_i16_neg[:])))
+
+	buf_i16_zero := encodeI16(0)
+	testing.expect(t, decodeI16(buf_i16_zero[:]) == 0, "I16 round-trip for 0 failed")
+
+	// Test encodeU24 / decodeU24
+	buf_u24 := encodeU24(100000)
+	testing.expect(t, decodeU24(buf_u24[:]) == 100000, fmt.tprintf("U24 round-trip failed: got %d", decodeU24(buf_u24[:])))
+
+	buf_u24_zero := encodeU24(0)
+	testing.expect(t, decodeU24(buf_u24_zero[:]) == 0, "U24 round-trip for 0 failed")
+
+	buf_u24_small := encodeU24(1)
+	testing.expect(t, decodeU24(buf_u24_small[:]) == 1, "U24 round-trip for 1 failed")
+}
+
+@(test)
+test_encode_full_program :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Compile a simple pattern and encode it
+	p := literal("hello")
+	prog := must_compile(p)
+	code := encode(prog)
+
+	// code_size should match actual byte length
+	sz := code_size(&code)
+	testing.expect(t, sz == len(code.insns), fmt.tprintf("code_size() = %d but len(insns) = %d", sz, len(code.insns)))
+
+	// Should have at least some bytes (5 Char instructions + End + padding)
+	testing.expect(t, sz > 0, "encoded program should have non-zero size")
+
+	// First byte should be a valid opcode (Char = 0)
+	testing.expect(t, code.insns[0] == byte(Opcode.Char), fmt.tprintf("first instruction should be Char (0), got %d", code.insns[0]))
+
+	// Last two bytes should be End opcode + padding
+	testing.expect(t, code.insns[sz - 2] == byte(Opcode.End), fmt.tprintf("second-to-last byte should be End opcode, got %d", code.insns[sz - 2]))
 }

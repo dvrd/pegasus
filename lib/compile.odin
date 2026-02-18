@@ -1,8 +1,11 @@
+#+feature dynamic-literals
 package pegasus
 
 import "charset"
 import "core:fmt"
+import "core:mem/virtual"
 import "core:strings"
+import "core:testing"
 
 ErrorKind :: enum {
 	// A NotFoundError means a a non-terminal was not found during grammar
@@ -525,4 +528,95 @@ compile_pattern :: proc(pattern: Pattern) -> (c: Program, err: bool) {
 		c, err = compile_dot_node(p)
 	}
 	return
+}
+
+@(test)
+test_compile_literal :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p := literal("abc")
+	prog, err := compile(p)
+	testing.expect(t, !err, "compile literal should not error")
+	testing.expect(t, len(prog) > 0, "compiled program should not be empty")
+
+	// literal("abc") should produce 3 Char instructions
+	char_count := 0
+	for insn in prog {
+		_, is_char := insn.(Char)
+		if is_char {
+			char_count += 1
+		}
+	}
+	testing.expect(t, char_count == 3, fmt.tprintf("expected 3 Char instructions, got %d", char_count))
+}
+
+@(test)
+test_compile_alternation :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	p := or(literal("a"), literal("b"))
+	prog, err := compile(p)
+	testing.expect(t, !err, "compile alternation should not error")
+	testing.expect(t, len(prog) > 0, "compiled program should not be empty")
+	testing.expect(t, len(prog) >= 1, fmt.tprintf("expected at least 1 instruction, got %d", len(prog)))
+}
+
+@(test)
+test_compile_repetition :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// star(literal("a")) — should produce a loop with Choice/PartialCommit
+	p_star := star(literal("a"))
+	prog_star, err1 := compile(p_star)
+	testing.expect(t, !err1, "compile star should not error")
+
+	has_choice := false
+	has_partial := false
+	for insn in prog_star {
+		if _, ok := insn.(Choice); ok { has_choice = true }
+		if _, ok := insn.(TestChar); ok { has_choice = true } // optimized form
+		if _, ok := insn.(PartialCommit); ok { has_partial = true }
+	}
+	testing.expect(t, has_choice || has_partial, "star should produce Choice or PartialCommit instructions")
+
+	// plus(literal("a")) — should include the pattern once then star
+	p_plus := plus(literal("a"))
+	prog_plus, err2 := compile(p_plus)
+	testing.expect(t, !err2, "compile plus should not error")
+	testing.expect(t, len(prog_plus) > len(prog_star), fmt.tprintf("plus program (%d) should be longer than star program (%d)", len(prog_plus), len(prog_star)))
+}
+
+@(test)
+test_compile_grammar :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Recursive grammar that cannot be fully inlined:
+	// S <- 'a' S / 'b'  (S references itself)
+	nonterms := make(map[string]Pattern)
+	nonterms["S"] = or(concat(literal("a"), non_term("S")), literal("b"))
+	p := grammar("S", nonterms)
+
+	prog, err := compile(p)
+	testing.expect(t, !err, "compile grammar should not error")
+	testing.expect(t, len(prog) > 0, "compiled grammar program should not be empty")
+
+	// Recursive grammar compilation should produce Call/Jump instructions
+	has_call := false
+	for insn in prog {
+		if _, ok := insn.(Call); ok { has_call = true }
+		if _, ok := insn.(Jump); ok { has_call = true } // tail-call optimized
+	}
+	testing.expect(t, has_call, "grammar should produce Call or Jump (tail-call) instructions")
 }

@@ -1,6 +1,9 @@
 package pegasus
 
 import "charset"
+import "core:testing"
+import "core:mem/virtual"
+import "core:fmt"
 
 // Cap marks a pattern to be captured.
 cap :: proc(
@@ -255,4 +258,117 @@ error :: proc(
 	np.(^ErrorNode).message = msg
 	np.(^ErrorNode).recover = recovery
 	return
+}
+
+@(test)
+test_pattern_constructors :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// literal
+	p_lit := literal("abc")
+	lit, ok_lit := p_lit.(^LiteralNode)
+	testing.expect(t, ok_lit, "literal should produce LiteralNode")
+	testing.expect(t, lit.str == "abc", fmt.tprintf("expected 'abc', got '%s'", lit.str))
+
+	// any
+	p_any := any(3)
+	dot, ok_dot := p_any.(^DotNode)
+	testing.expect(t, ok_dot, "any should produce DotNode")
+	testing.expect(t, dot.n == 3, fmt.tprintf("expected n=3, got %d", dot.n))
+
+	// optional
+	p_opt := optional(literal("x"))
+	_, ok_opt := p_opt.(^OptionalNode)
+	testing.expect(t, ok_opt, "optional should produce OptionalNode")
+
+	// not
+	p_not := not(literal("x"))
+	_, ok_not := p_not.(^NotNode)
+	testing.expect(t, ok_not, "not should produce NotNode")
+
+	// and
+	p_and := and(literal("x"))
+	_, ok_and := p_and.(^AndNode)
+	testing.expect(t, ok_and, "and should produce AndNode")
+
+	// star
+	p_star := star(literal("x"))
+	_, ok_star := p_star.(^StarNode)
+	testing.expect(t, ok_star, "star should produce StarNode")
+
+	// plus
+	p_plus := plus(literal("x"))
+	_, ok_plus := p_plus.(^PlusNode)
+	testing.expect(t, ok_plus, "plus should produce PlusNode")
+
+	// search
+	p_search := search(literal("x"))
+	_, ok_search := p_search.(^SearchNode)
+	testing.expect(t, ok_search, "search should produce SearchNode")
+
+	// emptyOp
+	p_empty := emptyOp()
+	_, ok_empty := p_empty.(^EmptyOpNode)
+	testing.expect(t, ok_empty, "emptyOp should produce EmptyOpNode")
+
+	// error
+	p_err := error("bad", nil)
+	err_node, ok_err := p_err.(^ErrorNode)
+	testing.expect(t, ok_err, "error should produce ErrorNode")
+	testing.expect(t, err_node.message == "bad", fmt.tprintf("expected message 'bad', got '%s'", err_node.message))
+
+	// or (alternation)
+	p_or := or(literal("a"), literal("b"))
+	_, ok_or := p_or.(^AltNode)
+	testing.expect(t, ok_or, "or should produce AltNode")
+
+	// concat (sequence)
+	p_seq := concat(literal("a"), literal("b"))
+	_, ok_seq := p_seq.(^SeqNode)
+	testing.expect(t, ok_seq, "concat should produce SeqNode")
+
+	// repeat
+	p_rep := repeat(literal("a"), 3)
+	_, ok_rep := p_rep.(^SeqNode)
+	testing.expect(t, ok_rep, "repeat(3) should produce SeqNode")
+
+	// repeat(p, 0) should produce EmptyNode
+	p_rep0 := repeat(literal("a"), 0)
+	_, ok_rep0 := p_rep0.(^EmptyNode)
+	testing.expect(t, ok_rep0, "repeat(0) should produce EmptyNode")
+
+	// non_term
+	p_nt := non_term("Foo")
+	nt, ok_nt := p_nt.(^NonTermNode)
+	testing.expect(t, ok_nt, "non_term should produce NonTermNode")
+	testing.expect(t, nt.name == "Foo", fmt.tprintf("expected name 'Foo', got '%s'", nt.name))
+}
+
+@(test)
+test_pattern_cap_and_memo :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// cap wrapping
+	inner := literal("hello")
+	p_cap := cap(inner, 42)
+	cn, ok_cap := p_cap.(^CapNode)
+	testing.expect(t, ok_cap, "cap should produce CapNode")
+	testing.expect(t, cn.id == 42, fmt.tprintf("expected cap id=42, got %d", cn.id))
+	_, ok_inner := cn.patt.(^LiteralNode)
+	testing.expect(t, ok_inner, "cap inner should be LiteralNode")
+
+	// memo wrapping
+	inner2 := literal("world")
+	p_memo := memo_pattern(inner2)
+	mn, ok_memo := p_memo.(^MemoNode)
+	testing.expect(t, ok_memo, "memo_pattern should produce MemoNode")
+	_, ok_inner2 := mn.patt.(^LiteralNode)
+	testing.expect(t, ok_inner2, "memo inner should be LiteralNode")
+	testing.expect(t, mn.id >= 0, fmt.tprintf("memo id should be >= 0, got %d", mn.id))
 }
