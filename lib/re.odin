@@ -188,6 +188,12 @@ compileSet :: proc(root: ^memo.Capture, s: string) -> ^charset.Set {
 init_re_compilation :: proc(s: string) -> (Pattern, bool) {
 	re_init()
 
+	// Reject empty or whitespace-only grammars before parsing
+	trimmed := strings.trim_space(s)
+	if len(trimmed) == 0 {
+		return nil, true
+	}
+
 	reader := new(strings.Reader)
 	strings.reader_init(reader, s)
 
@@ -197,7 +203,17 @@ init_re_compilation :: proc(s: string) -> (Pattern, bool) {
 		return nil, true
 	}
 
-	return compile_re(memo.capture_child(ast, 0), s), false
+	child := memo.capture_child(ast, 0)
+	if child == nil {
+		return nil, true
+	}
+
+	p := compile_re(child, s)
+	if p == nil {
+		return nil, true
+	}
+
+	return p, false
 }
 
 re_must_compile :: proc(s: string) -> Pattern {
@@ -653,4 +669,123 @@ Term    <- { [0-9]+ }
 	testing.expect(t, pos == 5, fmt.tprintf("expected pos=5, got %d", pos))
 	testing.expect(t, len(errs) == 0, "should have no errors")
 	testing.expect(t, captures != nil, "captures should not be nil")
+}
+
+// --- Negative grammar tests: invalid inputs that must return errors ---
+
+// Helper: asserts match() returns errors (non-empty errs slice) and is_match=false.
+expect_match_error :: proc(t: ^testing.T, gram: string, msg: string) {
+	is_match, _, _, errs := match(gram, "anything")
+	testing.expect(
+		t,
+		!is_match,
+		fmt.tprintf("%s: expected is_match=false, got true", msg),
+	)
+	testing.expect(
+		t,
+		len(errs) > 0,
+		fmt.tprintf("%s: expected errors, got none", msg),
+	)
+}
+
+@(test)
+test_match_error_empty_grammar :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, "", "empty grammar")
+}
+
+@(test)
+test_match_error_garbage_input :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, "!@#$%^&*()", "garbage input")
+}
+
+@(test)
+test_match_error_missing_arrow :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Valid identifier but no <- arrow
+	expect_match_error(t, "A [a-z]+", "missing arrow")
+}
+
+@(test)
+test_match_error_unterminated_class :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, "A <- [a-z", "unterminated character class")
+}
+
+@(test)
+test_match_error_unterminated_string :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, "A <- 'hello", "unterminated single-quoted string")
+}
+
+@(test)
+test_match_error_unterminated_dquote :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, `A <- "hello`, "unterminated double-quoted string")
+}
+
+@(test)
+test_match_error_unterminated_group :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, "A <- ('abc'", "unterminated group")
+}
+
+@(test)
+test_match_error_undefined_nonterminal :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// A references B, but B is never defined — should fail at compile stage
+	expect_match_error(t, "A <- B", "undefined non-terminal")
+}
+
+@(test)
+test_match_error_arrow_only :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, "<-", "arrow with no identifier or body")
+}
+
+@(test)
+test_match_error_whitespace_only :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match_error(t, "   \t\n  ", "whitespace-only grammar")
 }

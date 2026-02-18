@@ -33,6 +33,13 @@ compile :: proc(p: Pattern) -> (c: Program, err: bool) {
 	c, err = compile_pattern(p);if err {
 		return
 	}
+	// Check for unresolved OpenCall instructions (non-terminal references
+	// that were never defined). These would panic during encoding.
+	for insn in c {
+		if _, is_open := insn.(OpenCall); is_open {
+			return nil, true
+		}
+	}
 	optimize(&c)
 	return
 }
