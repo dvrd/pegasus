@@ -118,11 +118,6 @@ tree_shift :: proc(t: ^Tree, idx, amt: int) {
 	}
 }
 
-tree_apply_all_shifts :: proc(t: ^Tree) {
-	node_apply_all_shifts(t.root)
-	t.shifts = nil
-}
-
 // Size returns the total number of intervals stored in the tree.
 tree_size :: proc(t: ^Tree) -> int {
 	return node_size(t.root)

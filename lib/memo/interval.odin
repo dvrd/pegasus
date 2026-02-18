@@ -14,10 +14,6 @@ interval_length :: proc(i: ^Interval) -> int {
 	return i.high - i.low
 }
 
-interval_to_string :: proc(i: ^Interval) -> string {
-	return fmt.tprintf("[%d, %d)", i.low, i.high)
-}
-
 // returns true if i1 overlaps with the interval [low:high)
 interval_overlaps :: proc(i1: Interval, low, high: int) -> bool {
 	return i1.low <= high && i1.high >= low

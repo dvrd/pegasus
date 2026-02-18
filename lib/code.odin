@@ -222,20 +222,6 @@ encodeU8 :: proc(x: uint) -> [1]byte {
 	return [1]byte{byte(x)}
 }
 
-encodeI8 :: proc(x: int) -> [1]byte {
-	if x < -128 || x >= 128 {
-		panic("I8 out of bounds")
-	}
-	return [1]byte{byte(x)}
-}
-
-encodeU16 :: proc(x: uint) -> [2]byte {
-	if x >= (1 << 16) {
-		panic("U16 out of bounds")
-	}
-	return [2]byte{byte(u16(x)), byte(u16(x) >> 8)}
-}
-
 encodeI16 :: proc(x: int) -> [2]byte {
 	if x < -(1 << 15) || x >= (1 << 15) {
 		panic("I16 out of bounds")

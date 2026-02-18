@@ -7,26 +7,6 @@ import "core:mem/virtual"
 import "core:strings"
 import "core:testing"
 
-ErrorKind :: enum {
-	// A NotFoundError means a a non-terminal was not found during grammar
-	// compilation.
-	NotFoundError,
-}
-
-CompileError :: struct {
-	kind: ErrorKind,
-	msg:  string,
-}
-
-// Error returns the error message.
-not_found_error_error :: proc(e: ^CompileError) -> string {
-	return fmt.sbprintf(
-		&strings.Builder{},
-		"non-terminal %s: not found",
-		e.msg,
-	)
-}
-
 // Compile takes an input pattern and returns the result of compiling it into a
 // parsing program, and optimizing the program.
 compile :: proc(p: Pattern) -> (c: Program, err: bool) {

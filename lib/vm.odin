@@ -1,7 +1,6 @@
 package pegasus
 
 import "charset"
-import "core:fmt"
 import "core:strings"
 import "input"
 import "memo"
@@ -14,10 +13,6 @@ ParseError :: struct {
 Interval :: struct {
 	low:  int,
 	high: int,
-}
-
-error_to_string :: proc(e: ParseError) -> string {
-	return fmt.tprintf("%v: %s", e.pos, e.message)
 }
 
 // Exec executes the parsing program this virtual machine was created with. It
@@ -45,24 +40,6 @@ exec :: proc(
 	// }
 
 	return exec_code(vm, &ip, st, &src, memtbl, nil)
-}
-
-exec_interval :: proc(
-	vm: ^Code,
-	r: ^strings.Reader,
-	memtbl: ^memo.Table,
-	intrvl: ^Interval,
-) -> (
-	bool,
-	int,
-	^memo.Capture,
-	[]ParseError,
-) {
-	ip := 0
-	st := stack_new()
-	src := input.new_input(r)
-
-	return exec_code(vm, &ip, st, &src, memtbl, intrvl)
 }
 
 exec_code :: proc(
@@ -598,10 +575,6 @@ failure_handler :: proc(
 
 decodeU8 :: proc(b: []byte) -> byte {
 	return b[0]
-}
-
-decodeI8 :: proc(b: []byte) -> i8 {
-	return i8(b[0])
 }
 
 decodeU16 :: proc(b: []byte) -> u16 {

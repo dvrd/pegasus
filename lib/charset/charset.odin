@@ -16,39 +16,6 @@ Set :: struct {
 	bits: [4]u64,
 }
 
-// A SmallSet is the same as a Set but can only represent 128 possible chars.
-// This is an optimization, since in the common case, only ASCII bytes are
-// used which are <128. The full Set is only necessary when unicode control
-// characters must be matched.
-SmallSet :: struct {
-	bits: [2]u64,
-}
-
-// small_set_size returns the number of chars matched by this Set.
-small_set_size :: proc(c: SmallSet) -> int {
-	return int(bits.count_ones(c.bits[0]) + bits.count_ones(c.bits[1]))
-}
-
-// small_set_has checks if a charset accepts a character.
-// Pointer receiver is for performance.
-small_set_has :: proc(c: ^SmallSet, r: byte) -> bool {
-	return(
-		c.bits[r >> log_2_word_size] & (u64(1) << (r & (word_size - 1))) !=
-		0 \
-	)
-}
-
-// is_small returns true if this set can be converted to a small set. In other
-// words, if this set only matches bytes <128.
-is_small :: proc(c: ^Set) -> bool {
-	return c.bits[2] == 0 && c.bits[3] == 0
-}
-
-// to_small_set converts this Set to a SmallSet.
-to_small_set :: proc(c: Set) -> SmallSet {
-	return SmallSet{[2]u64{c.bits[0], c.bits[1]}}
-}
-
 // new_charset returns a Set which accepts all chars in 'chars'. Note
 // that all chars must be valid ASCII characters (<128).
 new_charset :: proc(chars: []byte) -> (set: ^Set) {

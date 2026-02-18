@@ -314,14 +314,3 @@ node_apply_all_shifts :: proc(n: ^Node) {
 	node_apply_all_shifts(n.right)
 	node_apply_shifts(n)
 }
-
-node_each_node :: proc(n: ^Node, fn: proc(_: ^Node)) {
-	if n == nil {
-		return
-	}
-
-	node_each_node(n.left, fn)
-	node_apply_shifts(n)
-	fn(n)
-	node_each_node(n.right, fn)
-}
