@@ -464,3 +464,193 @@ test_match_partial :: proc(t: ^testing.T) {
 	expect_match(t, "'hel'", "hello", true, 3, "partial prefix match")
 	expect_match(t, "[a-z]+", "abc123", true, 3, "partial class match")
 }
+
+// --- Layer 5: Coverage gap tests ---
+
+@(test)
+test_match_and_predicate :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// &'a' succeeds without consuming, then 'a' consumes
+	expect_match(t, "&'a' 'a'", "a", true, 1, "and predicate lookahead then consume")
+	// &'a' fails on 'b' — nothing consumed
+	expect_match(t, "&'a' 'a'", "b", false, -1, "and predicate fails on non-match")
+	// &[0-9] with digit input
+	expect_match(t, "&[0-9] .", "5", true, 1, "and predicate with class")
+	// &'ab' checks two chars ahead
+	expect_match(t, "&'ab' 'ab'", "ab", true, 2, "and predicate multi-char")
+	expect_match(t, "&'ab' 'ab'", "ac", false, -1, "and predicate multi-char fail")
+}
+
+@(test)
+test_match_sequence :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "'a' 'b'", "ab", true, 2, "sequence of two literals")
+	expect_match(t, "'a' 'b'", "ac", false, -1, "sequence fails on second")
+	expect_match(t, "'a' 'b' 'c'", "abc", true, 3, "sequence of three literals")
+	expect_match(t, "[a-z] [0-9]", "a1", true, 2, "sequence of class and class")
+}
+
+@(test)
+test_match_negated_class :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "[^a-z]", "1", true, 1, "negated class matches digit")
+	expect_match(t, "[^a-z]", "a", false, -1, "negated class rejects lowercase")
+	expect_match(t, "[^0-9]+", "abc", true, 3, "negated digit class matches letters")
+	expect_match(t, "[^0-9]+", "123", false, -1, "negated digit class rejects digits")
+}
+
+@(test)
+test_match_single_chars_in_class :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "[abc]", "a", true, 1, "single char class matches a")
+	expect_match(t, "[abc]", "b", true, 1, "single char class matches b")
+	expect_match(t, "[abc]", "c", true, 1, "single char class matches c")
+	expect_match(t, "[abc]", "d", false, -1, "single char class rejects d")
+}
+
+@(test)
+test_match_multi_range_class :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	expect_match(t, "[a-zA-Z]+", "Hello", true, 5, "multi-range matches mixed case")
+	expect_match(t, "[a-zA-Z0-9]+", "abc123", true, 6, "alphanumeric class matches all")
+	expect_match(t, "[a-zA-Z0-9]+", "!@#", false, -1, "alphanumeric rejects symbols")
+}
+
+@(test)
+test_match_escape_in_literal :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// \n in literal matches actual newline
+	expect_match(t, "'\\n'", "\n", true, 1, "escaped newline in literal")
+	// \t in literal matches actual tab
+	expect_match(t, "'\\t'", "\t", true, 1, "escaped tab in literal")
+	// \\ in literal matches actual backslash
+	expect_match(t, "'\\\\'", "\\", true, 1, "escaped backslash in literal")
+	// \' in literal matches actual single quote
+	expect_match(t, "\"\\\"\"", "\"", true, 1, "escaped double quote in literal")
+}
+
+@(test)
+test_match_octal_escape :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// \101 is octal for 'A' (65 decimal)
+	expect_match(t, "'\\101'", "A", true, 1, "octal 101 matches A")
+	// \060 is octal for '0' (48 decimal)
+	expect_match(t, "'\\060'", "0", true, 1, "octal 060 matches 0")
+}
+
+@(test)
+test_match_memoization :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// {{ }} is memoization syntax — should behave identically to ( )
+	// for correctness, just with caching
+	gram := `
+Expr    <- Term ('+' Term)*
+Term    <- Factor ('*' Factor)*
+Factor  <- {{ [0-9]+ }}
+`
+	expect_match(t, gram, "1+2*3", true, 5, "memoized grammar arithmetic")
+	expect_match(t, gram, "42", true, 2, "memoized grammar single number")
+	expect_match(t, gram, "abc", false, -1, "memoized grammar rejects non-number")
+}
+
+@(test)
+test_match_capture_structure :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	gram := "{ [a-z]+ }"
+	is_match, pos, captures, errs := match(gram, "hello")
+	testing.expect(t, is_match, "capture should match")
+	testing.expect(t, pos == 5, fmt.tprintf("expected pos=5, got %d", pos))
+	testing.expect(t, len(errs) == 0, "should have no errors")
+	testing.expect(t, captures != nil, "captures should not be nil")
+
+	if captures != nil {
+		// The root capture wraps the entire match.
+		// It should have at least one child for the { } capture group.
+		n := memo.capture_num_children(captures)
+		testing.expect(t, n >= 1, fmt.tprintf("expected >= 1 capture children, got %d", n))
+
+		if n >= 1 {
+			child := memo.capture_child(captures, 0)
+			testing.expect(t, child != nil, "first capture child should not be nil")
+			if child != nil {
+				cs := memo.capture_start(child)
+				ce := memo.capture_end(child)
+				testing.expect(
+					t,
+					ce > cs,
+					fmt.tprintf("capture child should span >0 chars, start=%d end=%d", cs, ce),
+				)
+			}
+		}
+	}
+}
+
+@(test)
+test_match_combined_operators :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Combine multiple operators: optional, star, plus, not, and
+	expect_match(t, "'a'? 'b'+", "bbb", true, 3, "optional-a then plus-b")
+	expect_match(t, "'a'? 'b'+", "abbb", true, 4, "optional-a present then plus-b")
+	expect_match(t, "!'x' [a-z]+", "hello", true, 5, "not-x then letters")
+	expect_match(t, "&[a-z] .+", "hello", true, 5, "and-letter then dot-plus")
+	expect_match(t, "&[a-z] .+", "123", false, -1, "and-letter fails on digits")
+}
+
+@(test)
+test_match_grammar_with_captures :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Grammar from the README example (simplified)
+	gram := `
+Expr    <- Term ('+' Term)*
+Term    <- { [0-9]+ }
+`
+	is_match, pos, captures, errs := match(gram, "1+2+3")
+	testing.expect(t, is_match, "grammar with captures should match")
+	testing.expect(t, pos == 5, fmt.tprintf("expected pos=5, got %d", pos))
+	testing.expect(t, len(errs) == 0, "should have no errors")
+	testing.expect(t, captures != nil, "captures should not be nil")
+}
