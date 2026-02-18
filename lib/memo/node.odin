@@ -1,5 +1,9 @@
 package memo
 
+import "core:fmt"
+import "core:mem/virtual"
+import "core:testing"
+
 Node :: struct {
 	key:      Key,
 	max:      int,
@@ -313,4 +317,317 @@ node_apply_all_shifts :: proc(n: ^Node) {
 	node_apply_all_shifts(n.left)
 	node_apply_all_shifts(n.right)
 	node_apply_shifts(n)
+}
+
+// --- Tests ---
+
+// Helper: create a fresh Tree for node-level tests.
+make_test_tree :: proc() -> ^Tree {
+	t := new(Tree)
+	return t
+}
+
+// Helper: add a node with given key pos, id, and interval high value.
+add_test_node :: proc(root: ^Node, tree: ^Tree, pos, id, high: int) -> (^Node, ^LazyInterval) {
+	iv := new(Interval)
+	iv.low = pos
+	iv.high = high
+	iv.value = Entry{length = high - pos, examined = high - pos, count = 1}
+	return node_add(root, tree, Key{pos, id}, iv)
+}
+
+@(test)
+test_node_add_and_search :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	// Add three nodes
+	root, _ = add_test_node(root, tree, 10, 1, 15)
+	root, _ = add_test_node(root, tree, 5, 2, 8)
+	root, _ = add_test_node(root, tree, 20, 3, 25)
+
+	// Search for each
+	n1 := node_search(root, Key{10, 1})
+	testing.expect(t, n1 != nil, "should find node at key {10, 1}")
+	testing.expect(t, n1.key.pos == 10, fmt.tprintf("expected pos=10, got %d", n1.key.pos))
+
+	n2 := node_search(root, Key{5, 2})
+	testing.expect(t, n2 != nil, "should find node at key {5, 2}")
+
+	n3 := node_search(root, Key{20, 3})
+	testing.expect(t, n3 != nil, "should find node at key {20, 3}")
+
+	// Search miss
+	miss := node_search(root, Key{99, 99})
+	testing.expect(t, miss == nil, "should not find non-existent key")
+}
+
+@(test)
+test_node_remove :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	root, _ = add_test_node(root, tree, 10, 1, 15)
+	root, _ = add_test_node(root, tree, 5, 2, 8)
+	root, _ = add_test_node(root, tree, 20, 3, 25)
+	root, _ = add_test_node(root, tree, 3, 4, 4)
+	root, _ = add_test_node(root, tree, 7, 5, 9)
+
+	testing.expect(t, node_size(root) == 5, fmt.tprintf("expected size 5, got %d", node_size(root)))
+
+	// Remove leaf node
+	root = node_remove(root, Key{3, 4})
+	testing.expect(t, node_search(root, Key{3, 4}) == nil, "key {3,4} should be removed")
+	testing.expect(t, node_size(root) == 4, fmt.tprintf("expected size 4 after remove, got %d", node_size(root)))
+
+	// Remove node with one child
+	root = node_remove(root, Key{5, 2})
+	testing.expect(t, node_search(root, Key{5, 2}) == nil, "key {5,2} should be removed")
+	testing.expect(t, node_size(root) == 3, fmt.tprintf("expected size 3, got %d", node_size(root)))
+
+	// Remove node with two children (root-like)
+	root = node_remove(root, Key{10, 1})
+	testing.expect(t, node_search(root, Key{10, 1}) == nil, "key {10,1} should be removed")
+	testing.expect(t, node_size(root) == 2, fmt.tprintf("expected size 2, got %d", node_size(root)))
+
+	// Remaining nodes still findable
+	testing.expect(t, node_search(root, Key{7, 5}) != nil, "key {7,5} should still exist")
+	testing.expect(t, node_search(root, Key{20, 3}) != nil, "key {20,3} should still exist")
+}
+
+@(test)
+test_node_remove_nil :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Remove from nil tree should return nil
+	result := node_remove(nil, Key{1, 1})
+	testing.expect(t, result == nil, "removing from nil tree should return nil")
+}
+
+@(test)
+test_node_search_nil :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	result := node_search(nil, Key{1, 1})
+	testing.expect(t, result == nil, "searching nil tree should return nil")
+}
+
+@(test)
+test_node_duplicate_key_appends :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	// Add same key twice — should append to interval list
+	root, _ = add_test_node(root, tree, 10, 1, 15)
+	root, _ = add_test_node(root, tree, 10, 1, 20)
+
+	testing.expect(t, node_size(root) == 1, "duplicate key should not create new node")
+
+	n := node_search(root, Key{10, 1})
+	testing.expect(t, n != nil, "should find node")
+	testing.expect(t, len(n.interval.ins) == 2, fmt.tprintf("expected 2 intervals, got %d", len(n.interval.ins)))
+}
+
+@(test)
+test_node_avl_sorted_insert_balance :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	// Insert 10 nodes in ascending order — worst case for BST, but AVL should balance
+	for i := 0; i < 10; i += 1 {
+		root, _ = add_test_node(root, tree, i * 10, i, i * 10 + 5)
+	}
+
+	testing.expect(t, node_size(root) == 10, fmt.tprintf("expected size 10, got %d", node_size(root)))
+
+	// AVL height for 10 nodes: at most ceil(1.44 * log2(11)) ≈ 5
+	h := node_get_height(root)
+	testing.expect(t, h <= 5, fmt.tprintf("height %d exceeds expected max 5 for 10 nodes", h))
+}
+
+@(test)
+test_node_avl_reverse_insert_balance :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	// Insert in descending order — triggers right-heavy rotations
+	for i := 10; i > 0; i -= 1 {
+		root, _ = add_test_node(root, tree, i * 10, i, i * 10 + 5)
+	}
+
+	testing.expect(t, node_size(root) == 10, fmt.tprintf("expected size 10, got %d", node_size(root)))
+
+	h := node_get_height(root)
+	testing.expect(t, h <= 5, fmt.tprintf("height %d exceeds expected max 5 for 10 nodes", h))
+
+	// All nodes still findable
+	for i := 10; i > 0; i -= 1 {
+		n := node_search(root, Key{i * 10, i})
+		testing.expect(t, n != nil, fmt.tprintf("should find node at key {%d, %d}", i * 10, i))
+	}
+}
+
+@(test)
+test_node_find_smallest :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	root, _ = add_test_node(root, tree, 50, 1, 55)
+	root, _ = add_test_node(root, tree, 20, 2, 25)
+	root, _ = add_test_node(root, tree, 80, 3, 85)
+	root, _ = add_test_node(root, tree, 10, 4, 15)
+	root, _ = add_test_node(root, tree, 30, 5, 35)
+
+	smallest := node_find_smallest(root)
+	testing.expect(t, smallest != nil, "smallest should not be nil")
+	testing.expect(t, smallest.key.pos == 10, fmt.tprintf("expected smallest pos=10, got %d", smallest.key.pos))
+}
+
+@(test)
+test_node_height_and_size :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// nil node
+	testing.expect(t, node_get_height(nil) == 0, "nil node height should be 0")
+	testing.expect(t, node_size(nil) == 0, "nil node size should be 0")
+
+	tree := make_test_tree()
+	root: ^Node
+
+	// Single node
+	root, _ = add_test_node(root, tree, 10, 1, 15)
+	testing.expect(t, node_get_height(root) == 1, "single node height should be 1")
+	testing.expect(t, node_size(root) == 1, "single node size should be 1")
+
+	// Two nodes
+	root, _ = add_test_node(root, tree, 5, 2, 8)
+	testing.expect(t, node_get_height(root) == 2, fmt.tprintf("expected height 2, got %d", node_get_height(root)))
+	testing.expect(t, node_size(root) == 2, "two nodes size should be 2")
+}
+
+@(test)
+test_node_max_tracking :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	// Add nodes with different high values
+	root, _ = add_test_node(root, tree, 10, 1, 15)
+	root, _ = add_test_node(root, tree, 5, 2, 100) // highest
+	root, _ = add_test_node(root, tree, 20, 3, 25)
+
+	// Root's max should be at least 100 (the highest interval endpoint)
+	testing.expect(t, root.max >= 100, fmt.tprintf("root max should be >= 100, got %d", root.max))
+}
+
+@(test)
+test_node_remove_overlaps :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	root, _ = add_test_node(root, tree, 0, 1, 10)
+	root, _ = add_test_node(root, tree, 20, 2, 30)
+	root, _ = add_test_node(root, tree, 40, 3, 50)
+
+	// Remove overlaps with [0, 10] — should remove first node
+	root = node_remove_overlaps(root, 0, 10)
+	testing.expect(t, node_search(root, Key{0, 1}) == nil, "node at pos=0 should be removed by overlap")
+
+	// Others should survive
+	testing.expect(t, node_search(root, Key{20, 2}) != nil, "node at pos=20 should survive")
+	testing.expect(t, node_search(root, Key{40, 3}) != nil, "node at pos=40 should survive")
+}
+
+@(test)
+test_node_allvals :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	root, _ = add_test_node(root, tree, 10, 1, 15)
+	root, _ = add_test_node(root, tree, 5, 2, 8)
+	root, _ = add_test_node(root, tree, 20, 3, 25)
+
+	acc := make([dynamic]^Entry)
+	node_allvals(root, &acc)
+	testing.expect(t, len(acc) == 3, fmt.tprintf("expected 3 entries, got %d", len(acc)))
+}
+
+@(test)
+test_node_shift_updates_positions :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	tree := make_test_tree()
+	root: ^Node
+
+	root, _ = add_test_node(root, tree, 10, 1, 20)
+	root, _ = add_test_node(root, tree, 30, 2, 40)
+
+	// Apply a shift: everything at or after idx=5 shifts by +10
+	tree.root = root
+	tree_shift(tree, 5, 10)
+
+	// After shift, node at original pos=10 should now be at pos=20
+	// We need to search for the shifted key
+	node_apply_all_shifts(tree.root)
+	n := node_search(tree.root, Key{20, 1})
+	testing.expect(t, n != nil, "node originally at pos=10 should be at pos=20 after shift +10")
+
+	n2 := node_search(tree.root, Key{40, 2})
+	testing.expect(t, n2 != nil, "node originally at pos=30 should be at pos=40 after shift +10")
 }
