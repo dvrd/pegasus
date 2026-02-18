@@ -4,7 +4,6 @@ import "charset"
 import "core:bytes"
 import "core:fmt"
 import "core:mem/virtual"
-import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
@@ -218,14 +217,16 @@ match :: proc(
 	[]ParseError,
 ) {
 	patt, patt_err := init_re_compilation(gram);if patt_err {
-		log.error("Could not compile a pattern from the provided grammar")
-		os.exit(1)
+		errs := make([]ParseError, 1)
+		errs[0] = ParseError{message = "could not compile a pattern from the provided grammar", pos = 0}
+		return false, 0, nil, errs
 	}
 
 	prog: Program
 	prog, patt_err = compile(patt);if patt_err {
-		log.error("Could not compile a program from the provided pattern")
-		os.exit(1)
+		errs := make([]ParseError, 1)
+		errs[0] = ParseError{message = "could not compile a program from the provided pattern", pos = 0}
+		return false, 0, nil, errs
 	}
 
 	code := encode(prog)
@@ -239,8 +240,7 @@ match :: proc(
 }
 
 // Test helper: runs match() and asserts on success/failure and position.
-// NOTE: match() calls os.exit(1) on grammar compilation failure, so only
-// pass valid PEG grammar strings.
+// For invalid grammar tests, call match() directly and check errs.
 expect_match :: proc(
 	t: ^testing.T,
 	gram: string,
