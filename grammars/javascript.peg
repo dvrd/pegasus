@@ -1,0 +1,764 @@
+# =============================================================================
+# ECMAScript 2025 PEG Grammar
+# ECMA-262, 15th Edition
+#
+# A complete PEG grammar for JavaScript/ECMAScript 2025.
+# Covers: modules, classes, async/await, generators, decorators,
+#         optional chaining, nullish coalescing, destructuring,
+#         template literals, regex, BigInt, numeric separators,
+#         import attributes, private fields, and more.
+#
+# Usage:
+#   ./bin/pegasus grammars/javascript.peg "var x = 1;"
+#   ./bin/pegasus grammars/javascript.peg --file test.js
+# =============================================================================
+
+
+# =============================================================================
+# Section 1: Entry Point
+# =============================================================================
+
+Program        <- S { ModuleBody / ScriptBody } EndOfFile
+
+ScriptBody     <- StatementList
+ModuleBody     <- ModuleItem+
+
+ModuleItem     <- ImportDeclaration
+               / ExportDeclaration
+               / StatementListItem
+
+
+# =============================================================================
+# Section 2: Statements
+# =============================================================================
+
+StatementList     <- StatementListItem+
+StatementListItem <- Declaration / Statement
+
+Statement <- Block
+           / VariableStatement
+           / EmptyStatement
+           / IfStatement
+           / IterationStatement
+           / ContinueStatement
+           / BreakStatement
+           / ReturnStatement
+           / WithStatement
+           / SwitchStatement
+           / LabelledStatement
+           / ThrowStatement
+           / TryStatement
+           / DebuggerStatement
+           / ExpressionStatement
+
+# --- Block ---
+Block          <- LBRACE StatementList? RBRACE
+
+# --- Variable Statement ---
+VariableStatement <- VAR VariableDeclarationList EOS
+
+VariableDeclarationList <- VariableDeclaration (COMMA VariableDeclaration)*
+VariableDeclaration     <- BindingPattern Initializer?
+                         / BindingIdentifier Initializer?
+
+# --- Lexical Declaration (let, const) ---
+LexicalDeclaration <- (LET / CONST) BindingList EOS
+
+BindingList        <- LexicalBinding (COMMA LexicalBinding)*
+LexicalBinding     <- BindingPattern Initializer
+                    / BindingIdentifier Initializer?
+
+Initializer <- ASSIGN AssignmentExpression
+
+# --- Empty Statement ---
+EmptyStatement <- SEMI
+
+# --- Expression Statement ---
+# Must not start with { or function or class or let [
+ExpressionStatement <- !LBRACE !FUNCTION !CLASS !ASYNC_FUNCTION !(LET LBRACKET) Expression EOS
+
+# --- If Statement ---
+IfStatement <- IF LPAREN Expression RPAREN Statement (ELSE Statement)?
+
+# --- Iteration Statements ---
+IterationStatement <- DoWhileStatement
+                    / WhileStatement
+                    / ForStatement
+
+DoWhileStatement <- DO Statement WHILE LPAREN Expression RPAREN EOS
+
+WhileStatement <- WHILE LPAREN Expression RPAREN Statement
+
+ForStatement <- FOR AWAIT? LPAREN ForHead RPAREN Statement
+
+ForHead <- VAR VariableDeclaration IN Expression
+         / VAR VariableDeclaration OF AssignmentExpression
+         / VAR VariableDeclarationList SEMI Expression? SEMI Expression?
+         / (LET / CONST) ForBinding IN Expression
+         / (LET / CONST) ForBinding OF AssignmentExpression
+         / (LET / CONST) BindingList SEMI Expression? SEMI Expression?
+         / LeftHandSideExpression IN Expression
+         / LeftHandSideExpression OF AssignmentExpression
+         / Expression? SEMI Expression? SEMI Expression?
+
+ForBinding <- BindingPattern / BindingIdentifier
+
+# --- Continue / Break ---
+ContinueStatement <- CONTINUE (!LineTerminator LabelIdentifier)? EOS
+BreakStatement    <- BREAK (!LineTerminator LabelIdentifier)? EOS
+
+# --- Return ---
+ReturnStatement <- RETURN (!LineTerminator Expression)? EOS
+
+# --- With ---
+WithStatement <- WITH LPAREN Expression RPAREN Statement
+
+# --- Switch ---
+SwitchStatement <- SWITCH LPAREN Expression RPAREN CaseBlock
+
+CaseBlock    <- LBRACE CaseClause* DefaultClause? CaseClause* RBRACE
+CaseClause   <- CASE Expression COLON StatementList?
+DefaultClause <- DEFAULT COLON StatementList?
+
+# --- Labelled ---
+LabelledStatement <- LabelIdentifier COLON Statement
+
+# --- Throw ---
+ThrowStatement <- THROW !LineTerminator Expression EOS
+
+# --- Try ---
+TryStatement <- TRY Block (Catch Finally? / Finally)
+Catch        <- CATCH (LPAREN (BindingPattern / BindingIdentifier) RPAREN)? Block
+Finally      <- FINALLY Block
+
+# --- Debugger ---
+DebuggerStatement <- DEBUGGER EOS
+
+
+# =============================================================================
+# Section 3: Declarations
+# =============================================================================
+
+Declaration <- HoistableDeclaration
+             / ClassDeclaration
+             / LexicalDeclaration
+
+HoistableDeclaration <- FunctionDeclaration
+                      / GeneratorDeclaration
+                      / AsyncFunctionDeclaration
+                      / AsyncGeneratorDeclaration
+
+# --- Function Declaration ---
+FunctionDeclaration <- FUNCTION BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
+
+FormalParameters <- FormalParameterList? (COMMA FunctionRestParameter)?
+                  / FunctionRestParameter
+
+FormalParameterList <- FormalParameter (COMMA FormalParameter)*
+FormalParameter     <- BindingElement
+FunctionRestParameter <- DOTDOTDOT BindingElement
+
+FunctionBody <- StatementList?
+
+# --- Generator ---
+GeneratorDeclaration <- FUNCTION STAR BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE GeneratorBody RBRACE
+GeneratorBody        <- StatementList?
+
+# --- Async Function ---
+AsyncFunctionDeclaration <- ASYNC_FUNCTION BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE AsyncFunctionBody RBRACE
+AsyncFunctionBody        <- StatementList?
+
+# --- Async Generator ---
+AsyncGeneratorDeclaration <- ASYNC_FUNCTION STAR BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE AsyncGeneratorBody RBRACE
+AsyncGeneratorBody        <- StatementList?
+
+# --- Class ---
+ClassDeclaration <- DecoratorList? CLASS BindingIdentifier ClassTail
+ClassExpression  <- DecoratorList? CLASS BindingIdentifier? ClassTail
+
+ClassTail <- ClassHeritage? LBRACE ClassBody RBRACE
+
+ClassHeritage <- EXTENDS LeftHandSideExpression
+
+ClassBody <- ClassElement*
+
+ClassElement <- SEMI
+              / DecoratorList? STATIC ClassStaticBlock
+              / DecoratorList? STATIC MethodDefinition
+              / DecoratorList? STATIC FieldDefinition EOS
+              / DecoratorList? MethodDefinition
+              / DecoratorList? FieldDefinition EOS
+
+ClassStaticBlock <- LBRACE StatementList? RBRACE
+
+MethodDefinition <- ASYNC !LineTerminator STAR? ClassElementName LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
+                  / STAR ClassElementName LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
+                  / GET ClassElementName LPAREN RPAREN LBRACE FunctionBody RBRACE
+                  / SET ClassElementName LPAREN FormalParameter RPAREN LBRACE FunctionBody RBRACE
+                  / ClassElementName LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
+
+ClassElementName <- PrivateIdentifier / PropertyName
+
+FieldDefinition <- ClassElementName Initializer?
+
+# --- Decorators (ES2025) ---
+DecoratorList       <- Decorator+
+Decorator           <- AT DecoratorMemberExpression DecoratorCallExpression?
+DecoratorMemberExpression <- IdentifierName S (DOT IdentifierName S)*
+DecoratorCallExpression   <- LPAREN ArgumentList? RPAREN
+
+# --- Property Name ---
+PropertyName <- LiteralPropertyName / ComputedPropertyName
+LiteralPropertyName <- IdentifierName S / StringLiteral / NumericLiteral
+ComputedPropertyName <- LBRACKET AssignmentExpression RBRACKET
+
+
+# =============================================================================
+# Section 4: Modules
+# =============================================================================
+
+# --- Import ---
+ImportDeclaration <- IMPORT ImportClause FromClause WithClause? EOS
+                   / IMPORT ModuleSpecifier WithClause? EOS
+
+ImportClause <- ImportedDefaultBinding COMMA NameSpaceImport
+              / ImportedDefaultBinding COMMA NamedImports
+              / NameSpaceImport
+              / NamedImports
+              / ImportedDefaultBinding
+
+ImportedDefaultBinding <- ImportedBinding
+
+NameSpaceImport <- STAR AS ImportedBinding
+NamedImports    <- LBRACE ImportSpecifierList? RBRACE
+ImportSpecifierList <- ImportSpecifier (COMMA ImportSpecifier)* COMMA?
+ImportSpecifier <- IdentifierName S AS ImportedBinding
+                 / ImportedBinding
+ImportedBinding <- BindingIdentifier
+
+FromClause    <- FROM ModuleSpecifier
+ModuleSpecifier <- StringLiteral
+
+# --- Export ---
+ExportDeclaration <- EXPORT DEFAULT HoistableDeclaration
+                   / EXPORT DEFAULT ClassDeclaration
+                   / EXPORT DEFAULT !FUNCTION !CLASS AssignmentExpression EOS
+                   / EXPORT NamedExports FromClause WithClause? EOS
+                   / EXPORT NamedExports EOS
+                   / EXPORT STAR AS IdentifierName FromClause WithClause? EOS
+                   / EXPORT STAR FromClause WithClause? EOS
+                   / EXPORT Declaration
+                   / EXPORT VariableStatement
+
+NamedExports <- LBRACE ExportSpecifierList? RBRACE
+ExportSpecifierList <- ExportSpecifier (COMMA ExportSpecifier)* COMMA?
+ExportSpecifier <- IdentifierName S AS IdentifierName S
+                 / IdentifierName S
+
+# --- Import Attributes (ES2025) ---
+WithClause <- WITH LBRACE AttributeList RBRACE
+AttributeList <- ImportAttribute (COMMA ImportAttribute)* COMMA?
+ImportAttribute <- IdentifierName S COLON StringLiteral
+                 / StringLiteral COLON StringLiteral
+
+
+# =============================================================================
+# Section 5: Expressions (Precedence Climbing)
+# =============================================================================
+
+# Lowest precedence: comma expression
+Expression <- { AssignmentExpression (COMMA AssignmentExpression)* }
+
+# --- Assignment ---
+AssignmentExpression <- ArrowFunction
+                      / YieldExpression
+                      / LeftHandSideExpression AssignmentOperator AssignmentExpression
+                      / ConditionalExpression
+
+ArrowFunction <- ArrowParameters !LineTerminator ARROW ConciseBody
+
+ArrowParameters <- BindingIdentifier
+                 / LPAREN FormalParameters RPAREN
+
+ConciseBody <- !LBRACE AssignmentExpression
+             / LBRACE FunctionBody RBRACE
+
+AssignmentOperator <- '>>>=' S
+                    / '**=' S
+                    / '>>=' S
+                    / '<<=' S
+                    / '||=' S
+                    / '&&=' S
+                    / '??=' S
+                    / '+=' S
+                    / '-=' S
+                    / '*=' S
+                    / '/=' S
+                    / '%=' S
+                    / '|=' S
+                    / '^=' S
+                    / '&=' S
+                    / '=' !'=' S
+
+# --- Yield ---
+YieldExpression <- YIELD (!LineTerminator STAR? AssignmentExpression)?
+
+# --- Conditional (ternary) ---
+ConditionalExpression <- ShortCircuitExpression (QUESTION AssignmentExpression COLON AssignmentExpression)?
+
+# --- Nullish Coalescing ---
+ShortCircuitExpression <- LogicalORExpression (NULLISH LogicalORExpression)*
+
+# --- Logical OR ---
+LogicalORExpression <- LogicalANDExpression (OR LogicalANDExpression)*
+
+# --- Logical AND ---
+LogicalANDExpression <- BitwiseORExpression (AND BitwiseORExpression)*
+
+# --- Bitwise OR ---
+BitwiseORExpression <- BitwiseXORExpression (BITOR BitwiseXORExpression)*
+
+# --- Bitwise XOR ---
+BitwiseXORExpression <- BitwiseANDExpression (BITXOR BitwiseANDExpression)*
+
+# --- Bitwise AND ---
+BitwiseANDExpression <- EqualityExpression (BITAND EqualityExpression)*
+
+# --- Equality ---
+EqualityExpression <- RelationalExpression (EqualityOp RelationalExpression)*
+EqualityOp <- '===' S / '!==' S / '==' S / '!=' S
+
+# --- Relational ---
+RelationalExpression <- ShiftExpression (RelationalOp ShiftExpression)*
+RelationalOp <- '<=' S / '>=' S / '<' S / '>' S / INSTANCEOF / IN_KW
+
+# --- Shift ---
+ShiftExpression <- AdditiveExpression (ShiftOp AdditiveExpression)*
+ShiftOp <- '>>>' !'=' S / '>>' !'=' S / '<<' !'=' S
+
+# --- Additive ---
+AdditiveExpression <- MultiplicativeExpression (AdditiveOp MultiplicativeExpression)*
+AdditiveOp <- '+' ![+=] S / '-' ![-=] S
+
+# --- Multiplicative ---
+MultiplicativeExpression <- ExponentiationExpression (MultiplicativeOp ExponentiationExpression)*
+MultiplicativeOp <- '**' !'=' S / '*' ![*=] S / '/' !'=' S / '%' !'=' S
+
+# --- Exponentiation (right-associative) ---
+ExponentiationExpression <- UnaryExpression (POWER ExponentiationExpression)?
+
+# --- Unary ---
+UnaryExpression <- DELETE UnaryExpression
+                 / VOID UnaryExpression
+                 / TYPEOF UnaryExpression
+                 / AWAIT UnaryExpression
+                 / '++' S UnaryExpression
+                 / '--' S UnaryExpression
+                 / '+' ![+=] S UnaryExpression
+                 / '-' ![-=] S UnaryExpression
+                 / '~' S UnaryExpression
+                 / '!' !'=' S UnaryExpression
+                 / PostfixExpression
+
+# --- Postfix ---
+PostfixExpression <- LeftHandSideExpression (!LineTerminator ('++' / '--') S)?
+
+# --- Left-Hand Side ---
+LeftHandSideExpression <- OptionalExpression
+                        / CallExpression
+                        / NewExpression
+
+# --- Call Expression (iterative, no left recursion) ---
+CallExpression <- (SuperCall / ImportCall / CoverCallExpressionAndAsyncArrowHead) CallSuffix*
+
+CoverCallExpressionAndAsyncArrowHead <- MemberExpression Arguments
+
+SuperCall   <- SUPER Arguments
+ImportCall  <- IMPORT LPAREN AssignmentExpression RPAREN
+
+CallSuffix <- Arguments
+             / LBRACKET Expression RBRACKET
+             / DOT PrivateIdentifier
+             / DOT IdentifierName S
+             / TemplateLiteral
+
+# --- New Expression ---
+NewExpression <- NEW NewExpression !Arguments
+              / MemberExpression
+
+# --- Member Expression (iterative, no left recursion) ---
+MemberExpression <- (PrimaryExpression / SuperProperty / MetaProperty / NEW MemberExpression Arguments) MemberSuffix*
+
+MemberSuffix <- LBRACKET Expression RBRACKET
+               / DOT PrivateIdentifier
+               / DOT IdentifierName S
+               / TemplateLiteral
+
+SuperProperty <- SUPER LBRACKET Expression RBRACKET
+               / SUPER DOT IdentifierName S
+
+MetaProperty <- NEW DOT 'target' !IdentPart S
+              / IMPORT DOT 'meta' !IdentPart S
+
+# --- Optional Expression (optional chaining) ---
+OptionalExpression <- MemberExpression OptionalChain+
+
+OptionalChain <- OPTCHAIN Arguments
+               / OPTCHAIN LBRACKET Expression RBRACKET
+               / OPTCHAIN PrivateIdentifier
+               / OPTCHAIN IdentifierName S
+               / OPTCHAIN TemplateLiteral
+               / Arguments
+               / LBRACKET Expression RBRACKET
+               / DOT PrivateIdentifier
+               / DOT IdentifierName S
+               / TemplateLiteral
+
+# --- Arguments ---
+Arguments    <- LPAREN ArgumentList? RPAREN
+ArgumentList <- ArgumentItem (COMMA ArgumentItem)*
+ArgumentItem <- DOTDOTDOT AssignmentExpression
+              / AssignmentExpression
+
+
+# =============================================================================
+# Section 6: Primary Expressions
+# =============================================================================
+
+PrimaryExpression <- THIS
+                   / IdentifierReference
+                   / Literal
+                   / ArrayLiteral
+                   / ObjectLiteral
+                   / FunctionExpression
+                   / ClassExpression
+                   / GeneratorExpression
+                   / AsyncFunctionExpression
+                   / AsyncGeneratorExpression
+                   / RegularExpressionLiteral
+                   / TemplateLiteral
+                   / ParenthesizedExpression
+
+IdentifierReference <- !ReservedWord IdentifierName S
+
+ParenthesizedExpression <- LPAREN Expression RPAREN
+
+# --- Literals ---
+Literal <- NullLiteral / BooleanLiteral / NumericLiteral / StringLiteral
+
+NullLiteral    <- NULL
+BooleanLiteral <- TRUE / FALSE
+
+# --- Array Literal ---
+ArrayLiteral <- LBRACKET Elision? RBRACKET
+              / LBRACKET ElementList (COMMA Elision?)? RBRACKET
+
+ElementList <- Elision? ArrayElement (COMMA Elision? ArrayElement)*
+ArrayElement <- SpreadElement / AssignmentExpression
+SpreadElement <- DOTDOTDOT AssignmentExpression
+Elision <- COMMA+
+
+# --- Object Literal ---
+ObjectLiteral <- LBRACE RBRACE
+               / LBRACE PropertyDefinitionList COMMA? RBRACE
+
+PropertyDefinitionList <- PropertyDefinition (COMMA PropertyDefinition)*
+
+PropertyDefinition <- PropertyName COLON AssignmentExpression
+                    / MethodDefinition
+                    / CoverInitializedName
+                    / DOTDOTDOT AssignmentExpression
+                    / IdentifierReference
+
+CoverInitializedName <- IdentifierReference Initializer
+
+# --- Function / Generator / Async Expressions ---
+FunctionExpression       <- FUNCTION BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
+GeneratorExpression      <- FUNCTION STAR BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE GeneratorBody RBRACE
+AsyncFunctionExpression  <- ASYNC_FUNCTION BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE AsyncFunctionBody RBRACE
+AsyncGeneratorExpression <- ASYNC_FUNCTION STAR BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE AsyncGeneratorBody RBRACE
+
+
+# =============================================================================
+# Section 7: Destructuring / Binding Patterns
+# =============================================================================
+
+BindingPattern <- ObjectBindingPattern / ArrayBindingPattern
+
+ObjectBindingPattern <- LBRACE BindingPropertyList? (COMMA BindingRestProperty)? RBRACE
+                      / LBRACE BindingRestProperty RBRACE
+
+BindingPropertyList <- BindingProperty (COMMA BindingProperty)*
+BindingProperty     <- PropertyName COLON BindingElement
+                     / SingleNameBinding
+
+BindingRestProperty <- DOTDOTDOT BindingIdentifier
+
+ArrayBindingPattern <- LBRACKET BindingElementList? (COMMA BindingRestElement)? RBRACKET
+                     / LBRACKET BindingRestElement RBRACKET
+
+BindingElementList <- BindingElisionElement (COMMA BindingElisionElement)*
+BindingElisionElement <- Elision? BindingElement
+
+BindingElement <- BindingPattern Initializer?
+                / SingleNameBinding
+
+SingleNameBinding <- BindingIdentifier Initializer?
+
+BindingRestElement <- DOTDOTDOT (BindingPattern / BindingIdentifier)
+
+BindingIdentifier <- !ReservedWord IdentifierName S
+
+LabelIdentifier <- !ReservedWord IdentifierName S
+
+
+# =============================================================================
+# Section 8: Template Literals
+# =============================================================================
+
+TemplateLiteral <- NoSubstitutionTemplate
+                 / TemplateHead Expression (TemplateMiddle Expression)* TemplateTail
+
+NoSubstitutionTemplate <- '`' TemplateCharacters? '`' S
+
+TemplateHead   <- '`' TemplateCharacters? '${' S
+TemplateMiddle <- '}' TemplateCharacters? '${' S
+TemplateTail   <- '}' TemplateCharacters? '`' S
+
+TemplateCharacters <- TemplateCharacter+
+TemplateCharacter  <- '$' !'{' / '\\' TemplateEscapeSequence / LineContinuation / ![`$\\] .
+
+TemplateEscapeSequence <- SingleEscapeCharacter
+                        / '0' ![0-9]
+                        / HexEscapeSequence
+                        / UnicodeEscapeSequence
+                        / .
+
+
+# =============================================================================
+# Section 9: Regular Expression Literals
+# =============================================================================
+
+RegularExpressionLiteral <- '/' RegExpBody '/' RegExpFlags S
+
+RegExpBody  <- RegExpFirstChar RegExpChar*
+RegExpFirstChar <- ![*\\/\[] RegExpNonTerminator
+                 / RegExpBackslashSequence
+                 / RegExpClass
+RegExpChar <- ![/\\\[] RegExpNonTerminator
+            / RegExpBackslashSequence
+            / RegExpClass
+RegExpBackslashSequence <- '\\' RegExpNonTerminator
+RegExpClass <- '[' RegExpClassChar* ']'
+RegExpClassChar <- ![\]\\] RegExpNonTerminator
+                 / RegExpBackslashSequence
+RegExpNonTerminator <- !LineTerminator .
+RegExpFlags <- [gimsuvdy]*
+
+
+# =============================================================================
+# Section 10: Lexical — Identifiers
+# =============================================================================
+
+IdentifierName <- IdentStart IdentPart*
+
+IdentStart <- [a-zA-Z_$]
+            / UnicodeEscapeSequence
+
+IdentPart  <- IdentStart / [0-9]
+
+# Unicode escape in identifiers
+UnicodeEscapeSequence <- '\\u' HexDigit HexDigit HexDigit HexDigit
+                       / '\\u{' HexDigit+ '}'
+
+# --- Reserved Words ---
+ReservedWord <- ( 'break' / 'case' / 'catch' / 'continue' / 'debugger'
+               / 'default' / 'delete' / 'do' / 'else' / 'enum'
+               / 'export' / 'extends' / 'false' / 'finally' / 'for'
+               / 'function' / 'if' / 'import' / 'in' / 'instanceof'
+               / 'new' / 'null' / 'return' / 'super' / 'switch'
+               / 'this' / 'throw' / 'true' / 'try' / 'typeof'
+               / 'var' / 'void' / 'while' / 'with'
+               / 'yield' / 'await' / 'let' / 'const' / 'class'
+               / 'static' / 'async' ) !IdentPart
+
+
+# =============================================================================
+# Section 11: Lexical — Numeric Literals
+# =============================================================================
+
+NumericLiteral <- HexIntegerLiteral
+                / OctalIntegerLiteral
+                / BinaryIntegerLiteral
+                / DecimalLiteral
+
+# Decimal: 123, 1.5, .5, 1e10, 1.5e-3, with optional BigInt 'n'
+DecimalLiteral <- DecimalIntegerLiteral '.' DecimalDigits? ExponentPart? BigIntSuffix? S
+                / '.' DecimalDigits ExponentPart? S
+                / DecimalIntegerLiteral ExponentPart? BigIntSuffix? S
+
+DecimalIntegerLiteral <- '0' !DecimalDigit
+                       / NonZeroDigit (NumericSeparator? DecimalDigit)*
+
+DecimalDigits <- DecimalDigit (NumericSeparator? DecimalDigit)*
+DecimalDigit  <- [0-9]
+NonZeroDigit  <- [1-9]
+NumericSeparator <- '_'
+ExponentPart <- [eE] [+\-]? DecimalDigits
+BigIntSuffix <- 'n'
+
+# Hex: 0xFF
+HexIntegerLiteral <- '0' [xX] HexDigits BigIntSuffix? S
+HexDigits <- HexDigit (NumericSeparator? HexDigit)*
+HexDigit  <- [0-9a-fA-F]
+
+# Octal: 0o77
+OctalIntegerLiteral <- '0' [oO] OctalDigits BigIntSuffix? S
+OctalDigits <- OctalDigit (NumericSeparator? OctalDigit)*
+OctalDigit  <- [0-7]
+
+# Binary: 0b1010
+BinaryIntegerLiteral <- '0' [bB] BinaryDigits BigIntSuffix? S
+BinaryDigits <- BinaryDigit (NumericSeparator? BinaryDigit)*
+BinaryDigit  <- [01]
+
+
+# =============================================================================
+# Section 12: Lexical — String Literals
+# =============================================================================
+
+StringLiteral <- SingleStringLiteral / DoubleStringLiteral
+
+SingleStringLiteral <- ['] SingleStringChar* ['] S
+SingleStringChar    <- '\\' EscapeSequence
+                     / LineContinuation
+                     / !['\\\n\r] .
+
+DoubleStringLiteral <- ["] DoubleStringChar* ["] S
+DoubleStringChar    <- '\\' EscapeSequence
+                     / LineContinuation
+                     / !["\\\n\r] .
+
+EscapeSequence <- SingleEscapeCharacter
+                / '0' ![0-9]
+                / HexEscapeSequence
+                / UnicodeEscapeSequence
+                / .
+
+SingleEscapeCharacter <- ['"\\bfnrtv]
+
+HexEscapeSequence <- 'x' HexDigit HexDigit
+
+LineContinuation <- '\\' LineTerminatorSequence
+
+
+# =============================================================================
+# Section 13: Lexical — Whitespace, Comments, Line Terminators
+# =============================================================================
+
+# S is the main spacing rule — consumed after every token
+S <- (WhiteSpace / LineTerminatorSequence / Comment)*
+
+WhiteSpace <- [ \t] / '\013' / '\014'
+
+LineTerminator <- [\n\r]
+LineTerminatorSequence <- '\r\n' / '\r' / '\n'
+
+Comment <- MultiLineComment / SingleLineComment / HashbangComment
+SingleLineComment <- '//' (!LineTerminator .)* 
+MultiLineComment  <- '/*' (!'*/' .)* '*/'
+HashbangComment   <- '#!' (!LineTerminator .)*
+
+# --- Automatic Semicolon Insertion ---
+EOS <- SEMI / &RBRACE / &EndOfFile / LineTerminatorPresent
+
+# Check if there's a line terminator in the preceding whitespace
+# This is an approximation: we look for a newline before the next token
+LineTerminatorPresent <- S &.
+
+EndOfFile <- !.
+
+# --- Private Identifier ---
+PrivateIdentifier <- '#' IdentifierName S
+
+
+# =============================================================================
+# Section 14: Token Rules (Keywords & Punctuators)
+# =============================================================================
+
+# Keywords — each consumes trailing spacing and ensures not part of identifier
+ASYNC          <- 'async' !IdentPart S
+ASYNC_FUNCTION <- 'async' !IdentPart S 'function' !IdentPart S
+AWAIT          <- 'await' !IdentPart S
+BREAK          <- 'break' !IdentPart S
+CASE           <- 'case' !IdentPart S
+CATCH          <- 'catch' !IdentPart S
+CLASS          <- 'class' !IdentPart S
+CONST          <- 'const' !IdentPart S
+CONTINUE       <- 'continue' !IdentPart S
+DEBUGGER       <- 'debugger' !IdentPart S
+DEFAULT        <- 'default' !IdentPart S
+DELETE         <- 'delete' !IdentPart S
+DO             <- 'do' !IdentPart S
+ELSE           <- 'else' !IdentPart S
+EXPORT         <- 'export' !IdentPart S
+EXTENDS        <- 'extends' !IdentPart S
+FALSE          <- 'false' !IdentPart S
+FINALLY        <- 'finally' !IdentPart S
+FOR            <- 'for' !IdentPart S
+FROM           <- 'from' !IdentPart S
+FUNCTION       <- 'function' !IdentPart S
+GET            <- 'get' !IdentPart S
+IF             <- 'if' !IdentPart S
+IMPORT         <- 'import' !IdentPart S
+IN_KW          <- 'in' !IdentPart S
+INSTANCEOF     <- 'instanceof' !IdentPart S
+LET            <- 'let' !IdentPart S
+NEW            <- 'new' !IdentPart S
+NULL           <- 'null' !IdentPart S
+OF             <- 'of' !IdentPart S
+RETURN         <- 'return' !IdentPart S
+SET            <- 'set' !IdentPart S
+STATIC         <- 'static' !IdentPart S
+SUPER          <- 'super' !IdentPart S
+SWITCH         <- 'switch' !IdentPart S
+THIS           <- 'this' !IdentPart S
+THROW          <- 'throw' !IdentPart S
+TRUE           <- 'true' !IdentPart S
+TRY            <- 'try' !IdentPart S
+TYPEOF         <- 'typeof' !IdentPart S
+VAR            <- 'var' !IdentPart S
+VOID           <- 'void' !IdentPart S
+WHILE          <- 'while' !IdentPart S
+WITH           <- 'with' !IdentPart S
+YIELD          <- 'yield' !IdentPart S
+AS             <- 'as' !IdentPart S
+IN             <- 'in' !IdentPart S
+
+# Punctuators — longest match first within each group
+LBRACE   <- '{' S
+RBRACE   <- '}' S
+LPAREN   <- '(' S
+RPAREN   <- ')' S
+LBRACKET <- '[' S
+RBRACKET <- ']' S
+SEMI     <- ';' S
+COMMA    <- ',' S
+COLON    <- ':' S
+DOT      <- '.' !'.' S
+DOTDOTDOT <- '...' S
+ARROW    <- '=>' S
+STAR     <- '*' !'=' S
+QUESTION <- '?' !'?' !'.' S
+AT       <- '@' S
+ASSIGN   <- '=' !'>' !'=' S
+
+OPTCHAIN <- '?.' S
+NULLISH  <- '??' S
+OR       <- '||' !'=' S
+AND      <- '&&' !'=' S
+BITOR    <- '|' !'|' !'=' S
+BITXOR   <- '^' !'=' S
+BITAND   <- '&' !'&' !'=' S
+POWER    <- '**' !'=' S
+
