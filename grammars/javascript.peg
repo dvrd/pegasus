@@ -151,8 +151,9 @@ HoistableDeclaration <- FunctionDeclaration
 # --- Function Declaration ---
 FunctionDeclaration <- FUNCTION BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
 
-FormalParameters <- FormalParameterList? (COMMA FunctionRestParameter)?
-                  / FunctionRestParameter
+FormalParameters <- FunctionRestParameter
+                  / FormalParameterList (COMMA FunctionRestParameter)?
+                  / 
 
 FormalParameterList <- FormalParameter (COMMA FormalParameter)*
 FormalParameter     <- BindingElement
@@ -270,10 +271,19 @@ ImportAttribute <- IdentifierName S COLON StringLiteral
 Expression <- { AssignmentExpression (COMMA AssignmentExpression)* }
 
 # --- Assignment ---
-AssignmentExpression <- ArrowFunction
+AssignmentExpression <- AsyncArrowFunction
+                      / ArrowFunction
                       / YieldExpression
                       / LeftHandSideExpression AssignmentOperator AssignmentExpression
                       / ConditionalExpression
+
+AsyncArrowFunction <- ASYNC !LineTerminator AsyncArrowParameters !LineTerminator ARROW AsyncConciseBody
+
+AsyncArrowParameters <- BindingIdentifier
+                      / LPAREN FormalParameters RPAREN
+
+AsyncConciseBody <- !LBRACE AssignmentExpression
+                  / LBRACE AsyncFunctionBody RBRACE
 
 ArrowFunction <- ArrowParameters !LineTerminator ARROW ConciseBody
 
@@ -426,18 +436,22 @@ ArgumentItem <- DOTDOTDOT AssignmentExpression
 # =============================================================================
 
 PrimaryExpression <- THIS
-                   / IdentifierReference
+                   / IdentifierOrAsyncFunction
                    / Literal
                    / ArrayLiteral
                    / ObjectLiteral
                    / FunctionExpression
                    / ClassExpression
                    / GeneratorExpression
-                   / AsyncFunctionExpression
-                   / AsyncGeneratorExpression
                    / RegularExpressionLiteral
                    / TemplateLiteral
                    / ParenthesizedExpression
+
+# When we see 'async function', parse as function expression before identifier.
+# The lookahead 'async ' + 'function' is a cheap string check.
+IdentifierOrAsyncFunction <- &('async' [ \t\n\r]* 'function' [ \t\n\r*(]) AsyncGeneratorExpression
+                            / &('async' [ \t\n\r]* 'function' [ \t\n\r*(]) AsyncFunctionExpression
+                            / IdentifierReference
 
 IdentifierReference <- !ReservedWord IdentifierName S
 
@@ -579,8 +593,7 @@ ReservedWord <- ( 'break' / 'case' / 'catch' / 'continue' / 'debugger'
                / 'new' / 'null' / 'return' / 'super' / 'switch'
                / 'this' / 'throw' / 'true' / 'try' / 'typeof'
                / 'var' / 'void' / 'while' / 'with'
-               / 'yield' / 'await' / 'let' / 'const' / 'class'
-               / 'static' / 'async' ) !IdentPart
+               / 'yield' / 'await' / 'let' / 'const' / 'class' ) !IdentPart
 
 
 # =============================================================================
