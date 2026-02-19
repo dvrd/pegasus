@@ -1,43 +1,56 @@
 package charset
 
 import "core:fmt"
-import "core:math/bits"
 import "core:mem/virtual"
 import "core:strings"
 import "core:testing"
 
-log_2_word_size :: 6
-word_size :: 64
+// Half is a 128-bit set covering half the byte range (0-127).
+Half :: bit_set[0..<128; u128]
 
-// A Set represents a set of chars.
+// A Set represents a set of chars (bytes 0-255).
+// Stored as [4]u64 for serialization compatibility, but operations
+// use Odin's bit_set via transmute for idiomatic set operations.
 Set :: struct {
-	// Bits is the bit array for indicating which chars are in the set.
-	// We have 256 bits because a char can have 256 different values.
 	bits: [4]u64,
 }
 
-// new_charset returns a Set which accepts all chars in 'chars'. Note
-// that all chars must be valid ASCII characters (<128).
+// lo returns the low half (bytes 0-127) as a bit_set.
+@(private)
+lo :: #force_inline proc(c: ^Set) -> Half {
+	pair: [2]u64 = {c.bits[0], c.bits[1]}
+	return transmute(Half)pair
+}
+
+// hi returns the high half (bytes 128-255) as a bit_set.
+@(private)
+hi :: #force_inline proc(c: ^Set) -> Half {
+	pair: [2]u64 = {c.bits[2], c.bits[3]}
+	return transmute(Half)pair
+}
+
+// set_lo writes the low half back.
+@(private)
+set_lo :: #force_inline proc(c: ^Set, h: Half) {
+	pair := transmute([2]u64)h
+	c.bits[0] = pair[0]
+	c.bits[1] = pair[1]
+}
+
+// set_hi writes the high half back.
+@(private)
+set_hi :: #force_inline proc(c: ^Set, h: Half) {
+	pair := transmute([2]u64)h
+	c.bits[2] = pair[0]
+	c.bits[3] = pair[1]
+}
+
+// new_charset returns a Set which accepts all chars in 'chars'.
 new_charset :: proc(chars: []byte) -> (set: ^Set) {
 	set = new(Set)
-	set.bits = [4]u64{0, 0, 0, 0}
 	for c in chars {
-		switch {
-		case c < 64:
-			bit := u64(1) << c
-			set.bits[0] |= bit
-		case c < 128:
-			bit := u64(1) << (c - 64)
-			set.bits[1] |= bit
-		case c < 192:
-			bit := u64(1) << (c - 128)
-			set.bits[2] |= bit
-		case:
-			bit := u64(1) << (c - 192)
-			set.bits[3] |= bit
-		}
+		incl_byte(set, c)
 	}
-
 	return
 }
 
@@ -45,24 +58,9 @@ new_charset :: proc(chars: []byte) -> (set: ^Set) {
 // `high` inclusive.
 range :: proc(low, high: byte) -> (set: ^Set) {
 	set = new(Set)
-	set.bits = [4]u64{0, 0, 0, 0}
-	for c := u64(low); c <= u64(high); c += 1 {
-		switch {
-		case c < 64:
-			bit := u64(1) << c
-			set.bits[0] |= bit
-		case c < 128:
-			bit := u64(1) << (c - 64)
-			set.bits[1] |= bit
-		case c < 192:
-			bit := u64(1) << (c - 128)
-			set.bits[2] |= bit
-		case:
-			bit := u64(1) << (c - 192)
-			set.bits[3] |= bit
-		}
+	for c := u16(low); c <= u16(high); c += 1 {
+		incl_byte(set, byte(c))
 	}
-
 	return
 }
 
@@ -70,53 +68,53 @@ range :: proc(low, high: byte) -> (set: ^Set) {
 // matched by `c`.
 complement :: proc(c: ^Set) -> (s: ^Set) {
 	s = new(Set)
-	s.bits = [4]u64{~c.bits[0], ~c.bits[1], ~c.bits[2], ~c.bits[3]}
+	set_lo(s, ~lo(c))
+	set_hi(s, ~hi(c))
 	return
 }
 
 // add combines the characters two charsets match together.
 add :: proc(c: ^Set, c1: ^Set) -> (s: ^Set) {
 	s = new(Set)
-	s.bits = [4]u64{
-		c1.bits[0] | c.bits[0],
-		c1.bits[1] | c.bits[1],
-		c1.bits[2] | c.bits[2],
-		c1.bits[3] | c.bits[3],
-	}
-
+	set_lo(s, lo(c) + lo(c1))
+	set_hi(s, hi(c) + hi(c1))
 	return
 }
 
 // sub removes from 'c' any characters in 'c1'.
 sub :: proc(c: ^Set, c1: ^Set) -> (s: ^Set) {
 	s = new(Set)
-	s.bits = [4]u64{
-		~c1.bits[0] & c.bits[0],
-		~c1.bits[1] & c.bits[1],
-		~c1.bits[2] & c.bits[2],
-		~c1.bits[3] & c.bits[3],
-	}
-
+	set_lo(s, lo(c) - lo(c1))
+	set_hi(s, hi(c) - hi(c1))
 	return
 }
 
 // size returns the number of chars matched by this Set.
 size :: proc(c: ^Set) -> int {
-	return int(
-		bits.count_ones(c.bits[0]) +
-		bits.count_ones(c.bits[1]) +
-		bits.count_ones(c.bits[2]) +
-		bits.count_ones(c.bits[3]),
-	)
+	return card(lo(c)) + card(hi(c))
 }
 
-// Has checks if a charset accepts a character.
+// has checks if a charset accepts a character.
 // Pointer receiver is for performance.
 has :: proc(c: ^Set, r: byte) -> bool {
-	return(
-		c.bits[r >> log_2_word_size] & (u64(1) << (r & (word_size - 1))) !=
-		0 \
-	)
+	if r < 128 {
+		return int(r) in lo(c)
+	}
+	return int(r - 128) in hi(c)
+}
+
+// incl_byte adds a single byte to the set.
+@(private)
+incl_byte :: proc(c: ^Set, r: byte) {
+	if r < 128 {
+		h := lo(c)
+		h += {int(r)}
+		set_lo(c, h)
+	} else {
+		h := hi(c)
+		h += {int(r - 128)}
+		set_hi(c, h)
+	}
 }
 
 // String returns the string representation of the charset.
