@@ -152,7 +152,8 @@ HoistableDeclaration <- FunctionDeclaration
 FunctionDeclaration <- FUNCTION BindingIdentifier? LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
 
 FormalParameters <- FunctionRestParameter
-                  / FormalParameterList (COMMA FunctionRestParameter)?
+                  / FormalParameterList COMMA FunctionRestParameter
+                  / FormalParameterList COMMA?
                   / 
 
 FormalParameterList <- FormalParameter (COMMA FormalParameter)*
@@ -426,7 +427,7 @@ OptionalChain <- OPTCHAIN Arguments
 
 # --- Arguments ---
 Arguments    <- LPAREN ArgumentList? RPAREN
-ArgumentList <- ArgumentItem (COMMA ArgumentItem)*
+ArgumentList <- ArgumentItem (COMMA ArgumentItem)* COMMA?
 ArgumentItem <- DOTDOTDOT AssignmentExpression
               / AssignmentExpression
 
@@ -499,8 +500,10 @@ AsyncGeneratorExpression <- ASYNC_FUNCTION STAR BindingIdentifier? LPAREN Formal
 
 BindingPattern <- ObjectBindingPattern / ArrayBindingPattern
 
-ObjectBindingPattern <- LBRACE BindingPropertyList? (COMMA BindingRestProperty)? RBRACE
+ObjectBindingPattern <- LBRACE RBRACE
                       / LBRACE BindingRestProperty RBRACE
+                      / LBRACE BindingPropertyList COMMA BindingRestProperty RBRACE
+                      / LBRACE BindingPropertyList COMMA? RBRACE
 
 BindingPropertyList <- BindingProperty (COMMA BindingProperty)*
 BindingProperty     <- PropertyName COLON BindingElement
@@ -508,8 +511,10 @@ BindingProperty     <- PropertyName COLON BindingElement
 
 BindingRestProperty <- DOTDOTDOT BindingIdentifier
 
-ArrayBindingPattern <- LBRACKET BindingElementList? (COMMA BindingRestElement)? RBRACKET
+ArrayBindingPattern <- LBRACKET RBRACKET
                      / LBRACKET BindingRestElement RBRACKET
+                     / LBRACKET BindingElementList COMMA BindingRestElement RBRACKET
+                     / LBRACKET BindingElementList COMMA? RBRACKET
 
 BindingElementList <- BindingElisionElement (COMMA BindingElisionElement)*
 BindingElisionElement <- Elision? BindingElement
