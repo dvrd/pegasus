@@ -11,6 +11,7 @@ import log "log"
 import "memo"
 
 parser: Code
+CURRENT_RULE: string
 re_init :: proc() {
 	re_grammar_init()
 }
@@ -80,7 +81,7 @@ compile_re :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
 		case .OPEN:
 			p = compile_re(memo.capture_child(root, 1), s)
 		case .BRACEO:
-			p = cap(compile_re(memo.capture_child(root, 1), s), int(NonTerm.BRACEO))
+			p = cap(compile_re(memo.capture_child(root, 1), s), next_capture_id(CURRENT_RULE))
 		case .BRACEPO:
 			p = memo_pattern(compile_re(memo.capture_child(root, 1), s))
 		case .DOT:
@@ -164,7 +165,9 @@ parseId :: proc(root: ^memo.Capture, s: string) -> string {
 compileDef :: proc(root: ^memo.Capture, s: string) -> (string, Pattern) {
 	id := memo.capture_child(root, 0)
 	exp := memo.capture_child(root, 1)
-	return parseId(id, s), compile_re(exp, s)
+	name := parseId(id, s)
+	CURRENT_RULE = name
+	return name, compile_re(exp, s)
 }
 
 compileSet :: proc(root: ^memo.Capture, s: string) -> ^charset.Set {
@@ -187,6 +190,7 @@ compileSet :: proc(root: ^memo.Capture, s: string) -> ^charset.Set {
 
 init_re_compilation :: proc(s: string) -> (Pattern, bool) {
 	re_init()
+	reset_capture_names()
 
 	// Reject empty or whitespace-only grammars before parsing
 	trimmed := strings.trim_space(s)
@@ -956,4 +960,78 @@ Space   <- ' '*
 	expect_match(t, gram, "foo", true, 3, "multiline: single item")
 	expect_match(t, gram, "foo, bar", true, 8, "multiline: two items")
 	expect_match(t, gram, "a, b, c", true, 7, "multiline: three items")
+}
+
+@(test)
+test_capture_names_in_grammar :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	gram := `
+Expr    <- Term ('+' Term)*
+Term    <- { [0-9]+ }
+`
+	is_match, pos, captures, errs := match(gram, "1+2+3")
+	testing.expect(t, is_match, "grammar with named captures should match")
+	testing.expect(t, pos == 5, fmt.tprintf("expected pos=5, got %d", pos))
+	testing.expect(t, len(errs) == 0, "should have no errors")
+	testing.expect(t, captures != nil, "captures should not be nil")
+
+	// Verify capture IDs on the tree nodes are >= 100 (our capture range).
+	// We don't check the global CAPTURE_NAMES here because parallel tests
+	// race on it; the name table is validated by test_capture_name_table
+	// and the CLI integration test.
+	if captures != nil {
+		found_high_id := false
+		check_ids :: proc(c: ^memo.Capture, found: ^bool) {
+			if c == nil do return
+			if c.id >= 100 {
+				found^ = true
+			}
+			for child in c.children {
+				check_ids(child, found)
+			}
+		}
+		check_ids(captures, &found_high_id)
+		testing.expect(t, found_high_id, "capture tree should contain nodes with id >= 100")
+	}
+}
+
+@(test)
+test_capture_names_multiple_rules :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Two rules with captures — both should produce capture nodes with id >= 100.
+	gram := `
+Expr   <- { Factor } ('+' { Factor })*
+Factor <- { [0-9]+ }
+`
+	is_match, _, captures, errs := match(gram, "1+2")
+	testing.expect(t, is_match, "multi-rule capture grammar should match")
+	testing.expect(t, len(errs) == 0, "should have no errors")
+	testing.expect(t, captures != nil, "captures should not be nil")
+
+	// Verify the capture tree has multiple nodes with id >= 100.
+	// We don't check the global CAPTURE_NAMES here because parallel tests
+	// race on it; the name table is validated by test_capture_name_table
+	// and the CLI integration test.
+	if captures != nil {
+		high_id_count := 0
+		count_high_ids :: proc(c: ^memo.Capture, count: ^int) {
+			if c == nil do return
+			if c.id >= 100 {
+				count^ += 1
+			}
+			for child in c.children {
+				count_high_ids(child, count)
+			}
+		}
+		count_high_ids(captures, &high_id_count)
+		testing.expect(t, high_id_count >= 2, fmt.tprintf("expected >= 2 capture nodes with id >= 100, got %d", high_id_count))
+	}
 }

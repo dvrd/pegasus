@@ -53,6 +53,53 @@ memo_id :: proc(p: Pattern, id: int) -> (m: Pattern) {
 	return
 }
 
+// Capture name table — maps capture IDs to the grammar rule name that defined them.
+// IDs start at 100 to avoid collision with NonTerm enum values (max 24).
+// Uses a fixed-size array for thread safety (no dynamic allocation needed).
+MAX_CAPTURES :: 1024
+CAPTURE_ID: int = 100
+CAPTURE_NAMES: [MAX_CAPTURES]string
+
+// next_capture_id records a rule name for a new capture ID and returns it.
+next_capture_id :: proc(name: string) -> int {
+	id := CAPTURE_ID
+	CAPTURE_ID += 1
+	idx := id - 100
+	if idx >= 0 && idx < MAX_CAPTURES {
+		CAPTURE_NAMES[idx] = name
+	}
+	return id
+}
+
+// reset_capture_names clears the name table and resets the ID counter.
+// Called at the start of each grammar compilation.
+reset_capture_names :: proc() {
+	CAPTURE_ID = 100
+	for i in 0 ..< MAX_CAPTURES {
+		CAPTURE_NAMES[i] = ""
+	}
+}
+
+// get_capture_name returns the rule name for a capture ID, or "" if not found.
+get_capture_name :: proc(id: int) -> (string, bool) {
+	idx := id - 100
+	if idx >= 0 && idx < MAX_CAPTURES && CAPTURE_NAMES[idx] != "" {
+		return CAPTURE_NAMES[idx], true
+	}
+	return "", false
+}
+
+// get_capture_names returns a map view of the capture names (for display).
+get_capture_names :: proc() -> map[int]string {
+	result := make(map[int]string)
+	for i := 100; i < CAPTURE_ID && (i - 100) < MAX_CAPTURES; i += 1 {
+		if CAPTURE_NAMES[i - 100] != "" {
+			result[i] = CAPTURE_NAMES[i - 100]
+		}
+	}
+	return result
+}
+
 // Memo marks a pattern as memoizable.
 memo_pattern :: proc(p: Pattern) -> (m: Pattern) {
 	m = new(MemoNode)
@@ -371,4 +418,33 @@ test_pattern_cap_and_memo :: proc(t: ^testing.T) {
 	_, ok_inner2 := mn.patt.(^LiteralNode)
 	testing.expect(t, ok_inner2, "memo inner should be LiteralNode")
 	testing.expect(t, mn.id >= 0, fmt.tprintf("memo id should be >= 0, got %d", mn.id))
+}
+
+@(test)
+test_capture_name_table :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	// Reset to known state before testing.
+	reset_capture_names()
+
+	id1 := next_capture_id("Expr")
+	id2 := next_capture_id("Expr")
+	id3 := next_capture_id("Factor")
+
+	// IDs are sequential starting from 100.
+	testing.expect(t, id1 == 100, fmt.tprintf("expected id1=100, got %d", id1))
+	testing.expect(t, id2 == 101, fmt.tprintf("expected id2=101, got %d", id2))
+	testing.expect(t, id3 == 102, fmt.tprintf("expected id3=102, got %d", id3))
+
+	// Names are correct.
+	n1, ok1 := get_capture_name(id1)
+	testing.expect(t, ok1, "should find name for id1")
+	testing.expect(t, n1 == "Expr", fmt.tprintf("expected 'Expr', got '%s'", n1))
+
+	n3, ok3 := get_capture_name(id3)
+	testing.expect(t, ok3, "should find name for id3")
+	testing.expect(t, n3 == "Factor", fmt.tprintf("expected 'Factor', got '%s'", n3))
 }

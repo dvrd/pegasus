@@ -1,4 +1,4 @@
-Expr   <- Factor ([+\-] Factor)*
-Factor <- Term ([*/] Term)*
-Term   <- Number / '(' Expr ')'
+Expr   <- { Factor } ([+\-] { Factor })*
+Factor <- { Term } ([*/] { Term })*
+Term   <- { Number } / '(' Expr ')'
 Number <- [0-9]+

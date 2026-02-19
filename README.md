@@ -74,6 +74,57 @@ EndOfFile 	<- !.
 ```
 
 
+## CLI Usage
+
+Build the binary, then run it against a grammar file:
+
+```sh
+task b    # build to ./bin/pegasus
+```
+
+### Basic usage
+
+```sh
+# Parse input string against a grammar
+./bin/pegasus grammars/arith.peg "2+3*(4-1)"
+
+# Parse input from a file
+./bin/pegasus grammars/peg.peg --file grammars/arith.peg
+
+# Parse input from stdin
+echo "2+3" | ./bin/pegasus grammars/arith.peg
+```
+
+### Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Read input from a file instead of an argument |
+| `--quiet` | `-q` | Suppress output, only set exit code |
+| `--help` | `-h` | Show usage information |
+
+### Exit codes
+
+| Code | Meaning |
+|------|--------|
+| `0` | Input matched the grammar |
+| `1` | Input did not match |
+| `2` | Error (bad grammar, missing file, no input) |
+
+### Examples
+
+```sh
+# Quiet mode — useful in scripts
+./bin/pegasus grammars/arith.peg "2+3" --quiet && echo "valid"
+
+# Check exit code
+./bin/pegasus grammars/arith.peg "???"; echo "exit: $?"
+
+# Parse a grammar file with the PEG meta-grammar
+./bin/pegasus grammars/peg.peg --file grammars/arith.peg
+```
+
+
 ## API
 
 ### `match`

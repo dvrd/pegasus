@@ -7,5 +7,5 @@ pegasus
 bin/
 thoughts/
 
-.task/
+.task/checksum/*
 .logs/
