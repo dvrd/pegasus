@@ -3,6 +3,8 @@ package pegasus
 import "charset"
 import "core:fmt"
 import "core:strings"
+import "core:testing"
+import "core:mem/virtual"
 
 uniqId: int
 
@@ -613,4 +615,187 @@ to_string :: proc {
 	string_from_error,
 	string_from_empty,
 	string_from_program,
+}
+
+// -- Tests --
+
+@(test)
+test_new_label_unique :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	l1 := new_label()
+	l2 := new_label()
+	l3 := new_label()
+
+	testing.expect(t, l1.id != l2.id, "labels should have unique ids")
+	testing.expect(t, l2.id != l3.id, "labels should have unique ids")
+	testing.expect(t, l2.id == l1.id + 1, "label ids should be sequential")
+}
+
+@(test)
+test_is_jmp_type_true :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	lbl := new_label()
+
+	jmp_types := [?]Instruction{
+		Jump{lbl = lbl},
+		Choice{lbl = lbl},
+		Call{lbl = lbl},
+		Commit{lbl = lbl},
+		PartialCommit{lbl = lbl},
+		BackCommit{lbl = lbl},
+		TestChar{byte = 'a', lbl = lbl},
+		TestCharNoChoice{byte = 'a', lbl = lbl},
+		TestSet{lbl = lbl},
+		TestSetNoChoice{lbl = lbl},
+		TestAny{n = 1, lbl = lbl},
+		MemoOpen{lbl = lbl, id = 1},
+		MemoTreeOpen{lbl = lbl, id = 1},
+	}
+
+	for inst, i in jmp_types {
+		testing.expect(t, is_jmp_type(inst), fmt.tprintf("instruction %d should be jmp type", i))
+	}
+}
+
+@(test)
+test_is_jmp_type_false :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	non_jmp := [?]Instruction{
+		Char{byte = 'a'},
+		Return{},
+		Fail{},
+		Any{n = 1},
+		FailTwice{},
+		End{fail = false},
+		Nop{},
+		MemoClose{},
+		CaptureBegin{id = 1},
+		CaptureEnd{id = 1},
+	}
+
+	for inst, i in non_jmp {
+		testing.expect(t, !is_jmp_type(inst), fmt.tprintf("instruction %d should NOT be jmp type", i))
+	}
+}
+
+@(test)
+test_string_from_label :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	l := Label{id = 42}
+	s := to_string(l)
+	testing.expect(t, s == "L42", fmt.tprintf("expected 'L42', got '%s'", s))
+}
+
+@(test)
+test_string_from_char :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	c := Char{byte = 'x'}
+	s := to_string(c)
+	testing.expect(t, strings.contains(s, "Char"), fmt.tprintf("expected 'Char' in '%s'", s))
+}
+
+@(test)
+test_string_from_end_success :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	e := End{fail = false}
+	s := to_string(e)
+	testing.expect(t, s == "End Success", fmt.tprintf("expected 'End Success', got '%s'", s))
+}
+
+@(test)
+test_string_from_end_fail :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	e := End{fail = true}
+	s := to_string(e)
+	testing.expect(t, s == "End Fail", fmt.tprintf("expected 'End Fail', got '%s'", s))
+}
+
+@(test)
+test_string_from_return :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	r := Return{}
+	s := to_string(r)
+	testing.expect(t, s == "Return", fmt.tprintf("expected 'Return', got '%s'", s))
+}
+
+@(test)
+test_string_from_fail :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	f := Fail{}
+	s := to_string(f)
+	testing.expect(t, s == "Fail", fmt.tprintf("expected 'Fail', got '%s'", s))
+}
+
+@(test)
+test_string_from_nop :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	n := Nop{}
+	s := to_string(n)
+	testing.expect(t, s == "Nop", fmt.tprintf("expected 'Nop', got '%s'", s))
+}
+
+@(test)
+test_string_from_program_simple :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	prog := []Instruction{Char{byte = 'a'}, End{fail = false}}
+	s := to_string(prog)
+	testing.expect(t, strings.contains(s, "Char"), fmt.tprintf("program string should contain 'Char', got '%s'", s))
+	testing.expect(t, strings.contains(s, "End Success"), fmt.tprintf("program string should contain 'End Success', got '%s'", s))
+}
+
+@(test)
+test_string_from_program_skips_nop :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	prog := []Instruction{Nop{}, Char{byte = 'b'}, Nop{}, End{fail = false}}
+	s := to_string(prog)
+	// Nop is skipped in the program string output
+	testing.expect(t, !strings.contains(s, "Nop"), fmt.tprintf("program string should skip Nop, got '%s'", s))
 }
