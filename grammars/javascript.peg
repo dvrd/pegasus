@@ -281,7 +281,7 @@ AssignmentExpression <- AsyncArrowFunction
 AsyncArrowFunction <- ASYNC !LineTerminator AsyncArrowParameters !LineTerminator ARROW AsyncConciseBody
 
 AsyncArrowParameters <- BindingIdentifier
-                      / LPAREN FormalParameters RPAREN
+                      / &(LPAREN ArrowParamScan RPAREN [ \t\n\r]* '=>') LPAREN FormalParameters RPAREN
 
 AsyncConciseBody <- !LBRACE AssignmentExpression
                   / LBRACE AsyncFunctionBody RBRACE
@@ -289,7 +289,10 @@ AsyncConciseBody <- !LBRACE AssignmentExpression
 ArrowFunction <- ArrowParameters !LineTerminator ARROW ConciseBody
 
 ArrowParameters <- BindingIdentifier
-                 / LPAREN FormalParameters RPAREN
+                 / &(LPAREN ArrowParamScan RPAREN [ \t\n\r]* '=>') LPAREN FormalParameters RPAREN
+
+# Cheap lookahead scan for arrow params: skip balanced parens to check for =>
+ArrowParamScan <- ([^()] / '(' ArrowParamScan ')')*
 
 ConciseBody <- !LBRACE AssignmentExpression
              / LBRACE FunctionBody RBRACE
