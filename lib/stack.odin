@@ -149,6 +149,299 @@ stack_pushCheck :: proc(s: ^Stack, m: StackMemo) {
 	stack_push(s, StackEntry{stype = .Check, memoized = m})
 }
 
+// -- Test helpers --
+
+make_test_capture :: proc(id: int, off: int, length: int) -> ^memo.Capture {
+	return memo.capture_new(id, off, length, nil)
+}
+
+// -- Tests --
+
+@(test)
+test_stack_add_capt_empty_stack :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	c1 := make_test_capture(1, 0, 5)
+	c2 := make_test_capture(2, 5, 3)
+
+	// With no entries, captures should go to s.capt
+	stack_add_capt(s, c1, c2)
+	testing.expect(t, len(s.capt) == 2, fmt.tprintf("expected 2 captures on stack, got %d", len(s.capt)))
+	testing.expect(t, s.capt[0].id == 1, fmt.tprintf("expected id=1, got %d", s.capt[0].id))
+	testing.expect(t, s.capt[1].id == 2, fmt.tprintf("expected id=2, got %d", s.capt[1].id))
+}
+
+@(test)
+test_stack_add_capt_with_entries :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 42)
+
+	c1 := make_test_capture(1, 0, 5)
+	stack_add_capt(s, c1)
+
+	// Capture should be on the top entry, not on s.capt
+	testing.expect(t, len(s.capt) == 0, "stack capt should be empty when entries exist")
+	top := stack_peek(s)
+	testing.expect(t, len(top.capt) == 1, fmt.tprintf("expected 1 capture on top entry, got %d", len(top.capt)))
+	testing.expect(t, top.capt[0].id == 1, fmt.tprintf("expected capture id=1, got %d", top.capt[0].id))
+}
+
+@(test)
+test_stack_prop_capt_single_entry :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 10)
+
+	// Add capture to top entry directly
+	c1 := make_test_capture(1, 0, 3)
+	stack_add_capt(s, c1)
+
+	// With only 1 entry, prop_capt should move captures to s.capt
+	stack_prop_capt(s)
+	testing.expect(t, len(s.capt) == 1, fmt.tprintf("expected 1 capture on stack after prop, got %d", len(s.capt)))
+	testing.expect(t, s.capt[0].id == 1, fmt.tprintf("expected id=1, got %d", s.capt[0].id))
+}
+
+@(test)
+test_stack_prop_capt_multiple_entries :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 10) // bottom entry
+	stack_pushRet(s, 20) // top entry
+
+	// Add captures to top entry
+	c1 := make_test_capture(1, 0, 3)
+	c2 := make_test_capture(2, 3, 4)
+	stack_add_capt(s, c1, c2)
+
+	// prop_capt should move top's captures to second-from-top
+	stack_prop_capt(s)
+
+	bottom := stack_peekn(s, 1)
+	testing.expect(t, bottom != nil, "bottom entry should exist")
+	testing.expect(t, len(bottom.capt) == 2, fmt.tprintf("expected 2 captures on bottom, got %d", len(bottom.capt)))
+	testing.expect(t, bottom.capt[0].id == 1, fmt.tprintf("expected id=1, got %d", bottom.capt[0].id))
+	testing.expect(t, bottom.capt[1].id == 2, fmt.tprintf("expected id=2, got %d", bottom.capt[1].id))
+
+	// s.capt should remain empty
+	testing.expect(t, len(s.capt) == 0, "stack capt should be empty when propagated to entry")
+}
+
+@(test)
+test_stack_prop_capt_empty_stack :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+
+	// Should be a no-op, no crash
+	stack_prop_capt(s)
+	testing.expect(t, len(s.capt) == 0, "prop_capt on empty stack should be no-op")
+}
+
+@(test)
+test_stack_prop_capt_no_captures :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 10)
+	stack_pushRet(s, 20)
+
+	// Top has no captures — prop_capt should be a no-op
+	stack_prop_capt(s)
+	bottom := stack_peekn(s, 1)
+	testing.expect(t, len(bottom.capt) == 0, "bottom should have no captures when top had none")
+	testing.expect(t, len(s.capt) == 0, "stack capt should remain empty")
+}
+
+@(test)
+test_stack_pop_propagate_true :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 10) // bottom
+	stack_pushRet(s, 20) // top
+
+	// Add capture to top entry
+	c1 := make_test_capture(1, 0, 5)
+	stack_add_capt(s, c1)
+
+	// Pop with propagate=true — capture should bubble to bottom entry
+	popped := stack_pop(s, true)
+	testing.expect(t, popped != nil, "pop should return entry")
+	testing.expect(t, popped.ret == 20, fmt.tprintf("expected ret=20, got %d", popped.ret))
+
+	bottom := stack_peek(s)
+	testing.expect(t, bottom != nil, "bottom entry should exist")
+	testing.expect(t, len(bottom.capt) == 1, fmt.tprintf("expected 1 capture on bottom after propagate, got %d", len(bottom.capt)))
+	testing.expect(t, bottom.capt[0].id == 1, fmt.tprintf("expected id=1, got %d", bottom.capt[0].id))
+}
+
+@(test)
+test_stack_pop_propagate_false :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 10) // bottom
+	stack_pushRet(s, 20) // top
+
+	// Add capture to top entry
+	c1 := make_test_capture(1, 0, 5)
+	stack_add_capt(s, c1)
+
+	// Pop with propagate=false — capture should NOT bubble
+	popped := stack_pop(s, false)
+	testing.expect(t, popped != nil, "pop should return entry")
+
+	bottom := stack_peek(s)
+	testing.expect(t, bottom != nil, "bottom entry should exist")
+	testing.expect(t, len(bottom.capt) == 0, "bottom should have no captures when propagate=false")
+	testing.expect(t, len(s.capt) == 0, "stack capt should be empty when propagate=false")
+}
+
+@(test)
+test_stack_pop_propagate_to_stack_capt :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 10) // only entry
+
+	c1 := make_test_capture(1, 0, 5)
+	stack_add_capt(s, c1)
+
+	// Pop the only entry with propagate=true — capture goes to s.capt
+	popped := stack_pop(s, true)
+	testing.expect(t, popped != nil, "pop should return entry")
+	testing.expect(t, len(s.entries) == 0, "stack should be empty after pop")
+	testing.expect(t, len(s.capt) == 1, fmt.tprintf("expected 1 capture on stack capt, got %d", len(s.capt)))
+	testing.expect(t, s.capt[0].id == 1, fmt.tprintf("expected id=1, got %d", s.capt[0].id))
+}
+
+@(test)
+test_stack_peekn :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 100)
+	stack_pushRet(s, 200)
+	stack_pushRet(s, 300)
+
+	// peekn(0) = top
+	p0 := stack_peekn(s, 0)
+	testing.expect(t, p0 != nil && p0.ret == 300, fmt.tprintf("peekn(0) expected 300, got %v", p0 != nil ? p0.ret : -1))
+
+	// peekn(1) = second from top
+	p1 := stack_peekn(s, 1)
+	testing.expect(t, p1 != nil && p1.ret == 200, fmt.tprintf("peekn(1) expected 200, got %v", p1 != nil ? p1.ret : -1))
+
+	// peekn(2) = bottom
+	p2 := stack_peekn(s, 2)
+	testing.expect(t, p2 != nil && p2.ret == 100, fmt.tprintf("peekn(2) expected 100, got %v", p2 != nil ? p2.ret : -1))
+
+	// peekn(3) = out of bounds
+	p3 := stack_peekn(s, 3)
+	testing.expect(t, p3 == nil, "peekn(3) should return nil for 3-element stack")
+}
+
+@(test)
+test_stack_reset :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	s := stack_new()
+	stack_pushRet(s, 10)
+	stack_pushRet(s, 20)
+
+	c1 := make_test_capture(1, 0, 5)
+	stack_add_capt(s, c1) // goes to top entry
+
+	// Also add directly to s.capt by popping with propagate, then adding more
+	stack_pop(s, true) // propagates c1 to bottom entry
+	stack_pop(s, true) // propagates c1 to s.capt (stack now empty)
+	testing.expect(t, len(s.capt) > 0, "s.capt should have captures before reset")
+
+	stack_reset(s)
+	testing.expect(t, len(s.entries) == 0, "entries should be empty after reset")
+	testing.expect(t, s.capt == nil, "capt should be nil after reset")
+
+	// Stack should be usable after reset
+	stack_pushRet(s, 99)
+	p := stack_peek(s)
+	testing.expect(t, p != nil && p.ret == 99, "stack should work after reset")
+}
+
+@(test)
+test_stack_entry_add_capt_initializes :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	se := StackEntry{stype = .Ret, ret = 1}
+	c1 := make_test_capture(1, 0, 3)
+	c2 := make_test_capture(2, 3, 2)
+
+	// First call initializes capt from slice
+	stack_entry_add_capt(&se, {c1, c2})
+	testing.expect(t, len(se.capt) == 2, fmt.tprintf("expected 2 captures, got %d", len(se.capt)))
+
+	// Second call appends
+	c3 := make_test_capture(3, 5, 1)
+	stack_entry_add_capt(&se, {c3})
+	testing.expect(t, len(se.capt) == 3, fmt.tprintf("expected 3 captures after append, got %d", len(se.capt)))
+	testing.expect(t, se.capt[2].id == 3, fmt.tprintf("expected id=3, got %d", se.capt[2].id))
+}
+
+@(test)
+test_stack_entry_add_capt_empty_slice :: proc(t: ^testing.T) {
+	arena: virtual.Arena
+	assert(virtual.arena_init_growing(&arena) == .None)
+	defer virtual.arena_destroy(&arena)
+	context.allocator = virtual.arena_allocator(&arena)
+
+	se := StackEntry{stype = .Ret, ret = 1}
+
+	// Adding empty slice should be a no-op
+	stack_entry_add_capt(&se, {})
+	testing.expect(t, len(se.capt) == 0, "adding empty slice should not create capt")
+}
+
 @(test)
 test_stack_push_pop :: proc(t: ^testing.T) {
 	arena: virtual.Arena
