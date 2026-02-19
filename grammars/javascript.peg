@@ -343,7 +343,9 @@ EqualityExpression <- RelationalExpression (EqualityOp RelationalExpression)*
 EqualityOp <- '===' S / '!==' S / '==' S / '!=' S
 
 # --- Relational ---
-RelationalExpression <- ShiftExpression (RelationalOp ShiftExpression)*
+# ES2022: PrivateIdentifier 'in' obj (ergonomic brand checks)
+RelationalExpression <- PrivateIdentifier IN_KW ShiftExpression (RelationalOp ShiftExpression)*
+                      / ShiftExpression (RelationalOp ShiftExpression)*
 RelationalOp <- '<=' S / '>=' S / '<' S / '>' S / INSTANCEOF / IN_KW
 
 # --- Shift ---
