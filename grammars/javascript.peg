@@ -234,8 +234,9 @@ ImportedDefaultBinding <- ImportedBinding
 NameSpaceImport <- STAR AS ImportedBinding
 NamedImports    <- LBRACE ImportSpecifierList? RBRACE
 ImportSpecifierList <- ImportSpecifier (COMMA ImportSpecifier)* COMMA?
-ImportSpecifier <- IdentifierName S AS ImportedBinding
+ImportSpecifier <- ModuleExportName AS ImportedBinding
                  / ImportedBinding
+ModuleExportName <- StringLiteral / IdentifierName S
 ImportedBinding <- BindingIdentifier
 
 FromClause    <- FROM ModuleSpecifier
@@ -247,15 +248,15 @@ ExportDeclaration <- EXPORT DEFAULT HoistableDeclaration
                    / EXPORT DEFAULT !FUNCTION !CLASS AssignmentExpression EOS
                    / EXPORT NamedExports FromClause WithClause? EOS
                    / EXPORT NamedExports EOS
-                   / EXPORT STAR AS IdentifierName FromClause WithClause? EOS
+                   / EXPORT STAR AS ModuleExportName FromClause WithClause? EOS
                    / EXPORT STAR FromClause WithClause? EOS
                    / EXPORT Declaration
                    / EXPORT VariableStatement
 
 NamedExports <- LBRACE ExportSpecifierList? RBRACE
 ExportSpecifierList <- ExportSpecifier (COMMA ExportSpecifier)* COMMA?
-ExportSpecifier <- IdentifierName S AS IdentifierName S
-                 / IdentifierName S
+ExportSpecifier <- ModuleExportName AS ModuleExportName
+                 / ModuleExportName
 
 # --- Import Attributes (ES2025) ---
 WithClause <- WITH LBRACE AttributeList RBRACE

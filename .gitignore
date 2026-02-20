@@ -9,3 +9,4 @@ thoughts/
 
 .task/checksum/*
 .logs/
+.mindmodel/
