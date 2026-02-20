@@ -1,8 +1,8 @@
 # Pegasus
 
-A fast **PEG (Parsing Expression Grammar)** parser for [Odin](https://odin-lang.org/). Built for parsing DSLs, config formats, or prototyping a language without pulling in heavy dependencies.
+A fast **PEG (Parsing Expression Grammar)** parser and packrat virtual machine for [Odin](https://odin-lang.org/). Compiles grammars into bytecode, optimizes them, and executes them with selective memoization — fast enough to parse real-world JavaScript files up to 116 KB.
 
-Pegasus compiles your grammar into a bytecode program and runs it on a virtual machine with memoization, so repeated parses are efficient.
+Ships with a **full ES2025 JavaScript grammar** (~190 rules) validated against 69 production files from Node.js, Express, Three.js, Underscore, Prettier, D3, and more.
 
 
 ## Installation
@@ -122,6 +122,14 @@ echo "2+3" | ./bin/pegasus grammars/arith.peg
 
 # Parse a grammar file with the PEG meta-grammar
 ./bin/pegasus grammars/peg.peg --file grammars/arith.peg
+
+# Parse a real JavaScript file
+./bin/pegasus grammars/javascript.peg --file node_modules/express/lib/router/index.js
+
+# Batch-validate a directory
+for f in node_modules/express/lib/*.js; do
+  ./bin/pegasus grammars/javascript.peg --file "$f" --quiet || echo "FAIL: $f"
+done
 ```
 
 
@@ -142,6 +150,36 @@ match :: proc(grammar: string, subject: string) -> (bool, int, ^memo.Capture, []
 - `int` — how many characters were consumed
 - `^memo.Capture` — the capture tree (from `{ }` expressions in the grammar)
 - `[]ParseError` — any errors encountered during parsing
+
+
+## JavaScript Grammar
+
+The flagship grammar at `grammars/javascript.peg` is a **complete ES2025 PEG grammar** — 778 lines, ~190 rules covering the full language:
+
+- **Modules** — `import` / `export` with all specifier forms, including ES2022 string literal module export names
+- **Declarations** — `let`, `const`, `var`, classes with fields/static blocks, generators, async generators
+- **Expressions** — optional chaining (`?.`), nullish coalescing (`??`), private field `in` checks (`#x in obj`), tagged templates, destructuring assignment
+- **Statements** — `for-of`, `for-in`, `for-await-of`, labeled statements, `switch`, `try`/`catch`/`finally`
+- **Functions** — arrow functions, async arrows, default parameters, rest parameters, computed property names
+- **Literals** — template literals with nesting, regex literals, BigInt, numeric separators
+
+### Validated against real-world code
+
+The grammar has been tested against **69 production JavaScript files** (~2 MB total, 1.6 KB – 116 KB) from:
+
+- **Node.js internals** — `path`, `fs`, `net`, `http2`, `streams`, `crypto`, `child_process`, `repl`, `readline`, `url`, CJS/ESM loaders, `buffer`, `events`, `errors`, `zlib`, `dgram`, `worker`, `cluster`, `console`, `timers`
+- **Express.js** — router, app, response
+- **Three.js** — `WebGLRenderer` (106 KB)
+- **Underscore.js** (68 KB), **Prettier**, **Moment.js**, **D3**, npm utilities
+
+### Performance notes
+
+Two key optimizations keep parsing tractable for large files:
+
+- **Arrow parameter lookahead** — a balanced-paren scan before `=>` avoids expensive speculative `FormalParameters` parses on every `(expr)`. ~38% faster.
+- **Unified `LeftHandSideExpression`** — merges `CallExpression` / `OptionalExpression` / `NewExpression` into a single rule with a suffix loop, eliminating exponential double-parse. ~42% faster.
+
+Selective memoization (threshold = 512) keeps memory usage reasonable. Files over ~500 KB may exhaust memory due to unbounded memo table growth.
 
 
 ## PEG Syntax Reference
@@ -183,20 +221,26 @@ RuleName <- Pattern
 Lines starting with `#` are comments.
 
 
+## Grammars
+
+| File | Description |
+|------|-------------|
+| `grammars/javascript.peg` | **Full ES2025 JavaScript** — ~190 rules, validated against 69 production files |
+| `grammars/peg.peg` | PEG meta-grammar — Pegasus can parse its own grammar format |
+| `grammars/arith.peg` | Arithmetic expressions with operator precedence |
+
 ## Examples
 
-The `examples/` directory contains complete, annotated grammars:
+The `examples/` directory contains standalone Odin packages that embed grammars and parse input programmatically:
 
 - **`examples/calculator/`** — Arithmetic expressions with operator precedence
 - **`examples/json/`** — Full JSON parser (objects, arrays, strings, numbers, booleans, null)
-- **`examples/javascript/`** — Subset of JavaScript (variables, functions, control flow, expressions)
-
-Each example is a standalone Odin package that you can study or run.
+- **`examples/javascript/`** — JavaScript subset (variables, functions, control flow, expressions)
 
 
 ## Testing
 
-Run the full test suite (185 tests across all packages):
+Run the full test suite (188 tests across all packages):
 
 ```sh
 task ta    # runs all tests with -thread-count:1 for determinism
@@ -214,17 +258,18 @@ task c     # clean
 
 ## Architecture
 
-Pegasus works in three stages:
+Pegasus works in four stages:
 
-1. **Compile** — The PEG grammar string is parsed and compiled into a bytecode `Program` (a sequence of `Instruction` values)
-2. **Optimize** — The program is optimized (dead code elimination, jump threading)
-3. **Execute** — The VM runs the program against the subject string, using a memoization table to avoid redundant work
+1. **Parse** — The PEG grammar string is parsed into an AST of grammar rules
+2. **Check** — The checker validates rule references, detects left recursion, and annotates the AST
+3. **Compile** — The AST is compiled into a bytecode `Program` (a sequence of `Instruction` values), then optimized (dead code elimination, jump threading)
+4. **Execute** — The VM runs the program against the subject string using a packrat memoization table with selective caching (only entries where the parser examined ≥512 characters are memoized)
 
 Key packages:
-- `lib/` — Core parser: grammar compilation, VM, pattern matching
+- `lib/` — Core: grammar parsing (`grammar.odin`), checker (`checker.odin`), compiler (`compile.odin`), optimizer (`optimize.odin`), VM (`vm.odin`), pattern matching (`re.odin`)
 - `lib/charset/` — Character set operations using Odin `bit_set`
 - `lib/input/` — Input abstraction over the subject string
-- `lib/memo/` — Memoization table, capture tree, parse tree nodes
+- `lib/memo/` — Memoization table (tree-based), capture tree, parse tree nodes
 - `lib/log/` — Logging utilities
 
 
