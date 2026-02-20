@@ -380,55 +380,45 @@ UnaryExpression <- DELETE UnaryExpression
 PostfixExpression <- LeftHandSideExpression (!LineTerminator ('++' / '--') S)?
 
 # --- Left-Hand Side ---
-LeftHandSideExpression <- OptionalExpression
-                        / CallExpression
-                        / NewExpression
-
-# --- Call Expression (iterative, no left recursion) ---
-CallExpression <- (SuperCall / ImportCall / CoverCallExpressionAndAsyncArrowHead) CallSuffix*
-
-CoverCallExpressionAndAsyncArrowHead <- MemberExpression Arguments
+# Unified: parse base once, then consume all call/member/optional-chain suffixes.
+# This avoids double-parsing between OptionalExpression and CallExpression.
+LeftHandSideExpression <- (SuperCall / ImportCall / NewExpression / MemberExpression) LHSSuffix*
 
 SuperCall   <- SUPER Arguments
 ImportCall  <- IMPORT LPAREN AssignmentExpression RPAREN
 
-CallSuffix <- Arguments
-             / LBRACKET Expression RBRACKET
-             / DOT PrivateIdentifier
-             / DOT IdentifierName S
-             / TemplateLiteral
-
 # --- New Expression ---
-NewExpression <- NEW NewExpression !Arguments
-              / MemberExpression
+# new Foo()   — with args (binds args to new, not as call suffix)
+# new Foo     — without args
+# new Foo.bar — member access before new binds
+NewExpression <- NEW MemberExpression Arguments
+              / NEW MemberExpression
 
 # --- Member Expression (iterative, no left recursion) ---
-MemberExpression <- (PrimaryExpression / SuperProperty / MetaProperty / NEW MemberExpression Arguments) MemberSuffix*
+MemberExpression <- (PrimaryExpression / SuperProperty / MetaProperty) MemberSuffix*
 
 MemberSuffix <- LBRACKET Expression RBRACKET
                / DOT PrivateIdentifier
                / DOT IdentifierName S
                / TemplateLiteral
 
+# Unified suffix: covers call, member access, and optional chaining
+LHSSuffix <- OPTCHAIN Arguments
+           / OPTCHAIN LBRACKET Expression RBRACKET
+           / OPTCHAIN PrivateIdentifier
+           / OPTCHAIN IdentifierName S
+           / OPTCHAIN TemplateLiteral
+           / Arguments
+           / LBRACKET Expression RBRACKET
+           / DOT PrivateIdentifier
+           / DOT IdentifierName S
+           / TemplateLiteral
+
 SuperProperty <- SUPER LBRACKET Expression RBRACKET
                / SUPER DOT IdentifierName S
 
 MetaProperty <- NEW DOT 'target' !IdentPart S
               / IMPORT DOT 'meta' !IdentPart S
-
-# --- Optional Expression (optional chaining) ---
-OptionalExpression <- MemberExpression OptionalChain+
-
-OptionalChain <- OPTCHAIN Arguments
-               / OPTCHAIN LBRACKET Expression RBRACKET
-               / OPTCHAIN PrivateIdentifier
-               / OPTCHAIN IdentifierName S
-               / OPTCHAIN TemplateLiteral
-               / Arguments
-               / LBRACKET Expression RBRACKET
-               / DOT PrivateIdentifier
-               / DOT IdentifierName S
-               / TemplateLiteral
 
 # --- Arguments ---
 Arguments    <- LPAREN ArgumentList? RPAREN
