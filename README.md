@@ -2,7 +2,7 @@
 
 A fast **PEG (Parsing Expression Grammar)** parser and packrat virtual machine for [Odin](https://odin-lang.org/). Compiles grammars into bytecode, optimizes them, and executes them with selective memoization — fast enough to parse real-world JavaScript files up to 116 KB.
 
-Ships with a **full ES2025 JavaScript grammar** (~190 rules) validated against 69 production files from Node.js, Express, Three.js, Underscore, Prettier, D3, and more.
+Ships with a **full ES2025 JavaScript grammar** (~195 rules) validated against 75 production files from Node.js, Express, Three.js, Underscore, Prettier, D3, and more.
 
 
 ## Installation
@@ -154,18 +154,19 @@ match :: proc(grammar: string, subject: string) -> (bool, int, ^memo.Capture, []
 
 ## JavaScript Grammar
 
-The flagship grammar at `grammars/javascript.peg` is a **complete ES2025 PEG grammar** — 778 lines, ~190 rules covering the full language:
+The flagship grammar at `grammars/javascript.peg` is a **complete ES2025 PEG grammar** — ~800 lines, ~200 rules covering the full language:
 
-- **Modules** — `import` / `export` with all specifier forms, including ES2022 string literal module export names
-- **Declarations** — `let`, `const`, `var`, classes with fields/static blocks, generators, async generators
+- **Modules** — `import` / `export` with all specifier forms, ES2022 string literal module export names, `import()` with options arg, `with` and `assert` attribute clauses
+- **Declarations** — `let`, `const`, `var`, `using`, `await using`, classes with fields/static blocks/auto-accessors, generators, async generators
 - **Expressions** — optional chaining (`?.`), nullish coalescing (`??`), private field `in` checks (`#x in obj`), tagged templates, destructuring assignment
-- **Statements** — `for-of`, `for-in`, `for-await-of`, labeled statements, `switch`, `try`/`catch`/`finally`
+- **Statements** — `for-of`, `for-in`, `for-await-of`, labeled statements (including labeled function declarations), `switch`, `try`/`catch`/`finally`
 - **Functions** — arrow functions, async arrows, default parameters, rest parameters, computed property names
-- **Literals** — template literals with nesting, regex literals, BigInt, numeric separators
+- **Literals** — template literals with nesting, regex literals, BigInt, numeric separators, legacy octal literals
+- **Classes** — decorators, static blocks, auto-accessors (`accessor x = 1`), private fields/methods, computed names
 
 ### Validated against real-world code
 
-The grammar has been tested against **69 production JavaScript files** (~2 MB total, 1.6 KB – 116 KB) from:
+The grammar has been tested against **75 production JavaScript files** (~2 MB total, 1.6 KB – 116 KB) from:
 
 - **Node.js internals** — `path`, `fs`, `net`, `http2`, `streams`, `crypto`, `child_process`, `repl`, `readline`, `url`, CJS/ESM loaders, `buffer`, `events`, `errors`, `zlib`, `dgram`, `worker`, `cluster`, `console`, `timers`
 - **Express.js** — router, app, response
@@ -180,6 +181,14 @@ Two key optimizations keep parsing tractable for large files:
 - **Unified `LeftHandSideExpression`** — merges `CallExpression` / `OptionalExpression` / `NewExpression` into a single rule with a suffix loop, eliminating exponential double-parse. ~42% faster.
 
 Selective memoization (threshold = 512) keeps memory usage reasonable. Files over ~500 KB may exhaust memory due to unbounded memo table growth.
+
+### Known limitations
+
+| # | Gap | Severity | Notes |
+|---|-----|----------|-------|
+| 1 | **Unicode identifiers** | Medium | Only ASCII `[a-zA-Z_$]` and `\uXXXX` escapes. Direct Unicode codepoints (`café`, `π`) rejected. Engine limitation — Pegasus operates byte-by-byte without Unicode category tables. |
+| 2 | **ASI over-permissive** | Low | `EOS` fallback accepts code that should be a syntax error. Restricted productions (`return`, `throw`, `++/--`) are handled correctly, but the general case is an approximation. Accepts invalid code but never rejects valid code. |
+| 3 | **`import.source()`** | Low | Source Phase Imports (Stage 3). Not yet in the spec. |
 
 
 ## PEG Syntax Reference
