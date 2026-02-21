@@ -1,5 +1,6 @@
 package pegasus
 
+import "base:runtime"
 import "core:slice"
 import "core:testing"
 import "core:mem/virtual"
@@ -7,8 +8,9 @@ import "core:fmt"
 import "memo"
 
 Stack :: struct {
-	entries: [dynamic]StackEntry,
-	capt:    [dynamic]^memo.Capture,
+	entries:  [dynamic]StackEntry,
+	capt:     [dynamic]^memo.Capture,
+	_pop_buf: StackEntry, // scratch space so stack_pop can return a stable pointer
 }
 
 stack_add_capt :: proc(s: ^Stack, capt: ..^memo.Capture) {
@@ -58,11 +60,10 @@ stack_entry_add_capt :: proc(se: ^StackEntry, capt: []^memo.Capture) {
 	if len(capt) == 0 {
 		return
 	}
-	if len(se.capt) == 0 {
-		se.capt = slice.to_dynamic(capt)
-	} else {
-		append(&se.capt, ..capt[:])
+	if se.capt == nil {
+		se.capt = make([dynamic]^memo.Capture, 0, len(capt))
 	}
+	append(&se.capt, ..capt[:])
 }
 
 StackRet :: int
@@ -103,8 +104,13 @@ stack_pop :: proc(s: ^Stack, propagate: bool) -> ^StackEntry {
 		return nil
 	}
 
-	ret := &s.entries[len(s.entries) - 1]
-	s.entries = slice.to_dynamic(s.entries[:len(s.entries) - 1])
+	// Copy the top entry before shrinking so the caller gets a stable value.
+	// We shrink the dynamic array in-place (no allocation) instead of
+	// creating a new slice via slice.to_dynamic which leaked under arena.
+	top_idx := len(s.entries) - 1
+	s._pop_buf = s.entries[top_idx]
+	ret := &s._pop_buf
+	(^runtime.Raw_Dynamic_Array)(&s.entries).len = top_idx
 	// For non-capture entries, propagate the captures upward.
 	// For capture entries, we create a new node with the corresponding
 	// children, and this is manually handled by the caller.

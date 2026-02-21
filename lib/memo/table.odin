@@ -14,12 +14,20 @@ Edit :: struct {
 	len:   int,
 }
 
+// MAX_ENTRIES caps the number of entries in the memo table to prevent
+// unbounded memory growth on large files. When the cap is reached, new
+// entries are silently dropped. Parsing remains correct (just slower for
+// the portion beyond the cap). A value of 100K entries covers ~200KB of
+// typical JavaScript source with a ~300-rule grammar.
+MAX_ENTRIES :: 100_000
+
 // Table implements a memoization table using an interval tree (augmented
 // to support efficient shifting).
 Table :: struct {
 	interval_map: ^Tree,
 	threshold:    int,
 	lock:         sync.Mutex,
+	count:        int, // number of entries currently stored
 }
 
 new_table :: proc(threshold: int) -> (t: ^Table) {
@@ -55,8 +63,17 @@ table_put :: proc(
 	e.captures = captures
 
 	sync.mutex_lock(&t.lock)
+
+	// Cap entries to prevent unbounded memory growth on large files
+	if t.count >= MAX_ENTRIES {
+		sync.mutex_unlock(&t.lock)
+		return
+	}
+
 	li := tree_add(t.interval_map, id, start, start + examined, e^)
 	entry_set_pos(e, li)
+	t.count += 1
+
 	sync.mutex_unlock(&t.lock)
 }
 

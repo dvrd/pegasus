@@ -251,6 +251,16 @@ match :: proc(
 
 	code := encode(prog)
 
+	// Use a growing arena for all VM/memo/capture allocations.
+	// Pointer-bump allocation is ~100x faster than per-element heap alloc
+	// and eliminates fragmentation that causes OOM on large inputs.
+	// The arena is not destroyed here — returned Capture pointers reference
+	// arena memory. Callers who need to reclaim memory should use
+	// match_with_arena() instead.
+	arena := new(virtual.Arena)
+	assert(virtual.arena_init_growing(arena) == .None, "Failed to initialize match arena")
+	context.allocator = virtual.arena_allocator(arena)
+
 	reader := new(strings.Reader)
 	strings.reader_init(reader, subject)
 
