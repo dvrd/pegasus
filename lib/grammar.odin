@@ -28,7 +28,7 @@ import "core:sync"
 // Class      <- '[' CARAT? (!']' Range)* ']' Spacing_
 // Range      <- Char '-' Char / Char
 // Char       <- '\\' [nrt'"\[\]\\\-]
-// 			/ '\\' [0-2][0-7][0-7]
+// 			/ '\\' [0-3][0-7][0-7]
 // 			/ '\\' [0-7][0-7]?
 // 			/ !'\\' .
 //
@@ -237,12 +237,12 @@ re_grammar_init :: proc() {
 					),
 				),
 			),
-			concat(
-				literal("\\"),
-				set(charset.range('0', '2')),
-				set(charset.range('0', '7')),
-				set(charset.range('0', '7')),
-			),
+		concat(
+			literal("\\"),
+			set(charset.range('0', '3')),
+			set(charset.range('0', '7')),
+			set(charset.range('0', '7')),
+		),
 			concat(
 				literal("\\"),
 				set(charset.range('0', '7')),
