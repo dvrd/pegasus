@@ -18,7 +18,7 @@
 # Section 1: Entry Point
 # =============================================================================
 
-Program        <- S { ModuleBody / ScriptBody } EndOfFile
+Program        <- HashbangComment? S { ModuleBody / ScriptBody } EndOfFile
 
 ScriptBody     <- StatementList
 ModuleBody     <- ModuleItem+
@@ -94,6 +94,8 @@ ForStatement <- FOR AWAIT? LPAREN ForHead RPAREN Statement
 ForHead <- VAR VariableDeclaration IN Expression
          / VAR VariableDeclaration OF AssignmentExpression
          / VAR VariableDeclarationList SEMI Expression? SEMI Expression?
+         / AWAIT_USING BindingIdentifier OF AssignmentExpression
+         / USING BindingIdentifier OF AssignmentExpression
          / (LET / CONST) ForBinding IN Expression
          / (LET / CONST) ForBinding OF AssignmentExpression
          / (LET / CONST) BindingList SEMI Expression? SEMI Expression?
@@ -121,7 +123,7 @@ CaseClause   <- CASE Expression COLON StatementList?
 DefaultClause <- DEFAULT COLON StatementList?
 
 # --- Labelled ---
-LabelledStatement <- LabelIdentifier COLON Statement
+LabelledStatement <- LabelIdentifier COLON (FunctionDeclaration / Statement)
 
 # --- Throw ---
 ThrowStatement <- THROW !LineTerminator Expression EOS
@@ -142,6 +144,14 @@ DebuggerStatement <- DEBUGGER EOS
 Declaration <- HoistableDeclaration
              / ClassDeclaration
              / LexicalDeclaration
+             / UsingDeclaration
+
+# --- Using Declaration (ES2025 Explicit Resource Management) ---
+UsingDeclaration <- AWAIT_USING UsingBindingList EOS
+                  / USING UsingBindingList EOS
+
+UsingBindingList <- UsingBinding (COMMA UsingBinding)*
+UsingBinding     <- BindingIdentifier Initializer
 
 HoistableDeclaration <- FunctionDeclaration
                       / GeneratorDeclaration
@@ -186,8 +196,10 @@ ClassBody <- ClassElement*
 
 ClassElement <- SEMI
               / DecoratorList? STATIC ClassStaticBlock
+              / DecoratorList? STATIC AutoAccessorDefinition EOS
               / DecoratorList? STATIC MethodDefinition
               / DecoratorList? STATIC FieldDefinition EOS
+              / DecoratorList? AutoAccessorDefinition EOS
               / DecoratorList? MethodDefinition
               / DecoratorList? FieldDefinition EOS
 
@@ -202,6 +214,8 @@ MethodDefinition <- ASYNC !LineTerminator STAR? ClassElementName LPAREN FormalPa
 ClassElementName <- PrivateIdentifier / PropertyName
 
 FieldDefinition <- ClassElementName Initializer?
+
+AutoAccessorDefinition <- ACCESSOR ClassElementName Initializer?
 
 # --- Decorators (ES2025) ---
 DecoratorList       <- Decorator+
@@ -259,7 +273,7 @@ ExportSpecifier <- ModuleExportName AS ModuleExportName
                  / ModuleExportName
 
 # --- Import Attributes (ES2025) ---
-WithClause <- WITH LBRACE AttributeList RBRACE
+WithClause <- (WITH / ASSERT) LBRACE AttributeList RBRACE
 AttributeList <- ImportAttribute (COMMA ImportAttribute)* COMMA?
 ImportAttribute <- IdentifierName S COLON StringLiteral
                  / StringLiteral COLON StringLiteral
@@ -386,13 +400,15 @@ PostfixExpression <- LeftHandSideExpression (!LineTerminator ('++' / '--') S)?
 LeftHandSideExpression <- (SuperCall / ImportCall / NewExpression / MemberExpression) LHSSuffix*
 
 SuperCall   <- SUPER Arguments
-ImportCall  <- IMPORT LPAREN AssignmentExpression RPAREN
+ImportCall  <- IMPORT LPAREN AssignmentExpression (COMMA AssignmentExpression)? COMMA? RPAREN
 
 # --- New Expression ---
-# new Foo()   — with args (binds args to new, not as call suffix)
-# new Foo     — without args
-# new Foo.bar — member access before new binds
-NewExpression <- NEW MemberExpression Arguments
+# new Foo()       — with args (binds args to new, not as call suffix)
+# new Foo         — without args
+# new new Foo()   — nested new (outer new binds to inner NewExpression)
+# new Foo.bar     — member access before new binds
+NewExpression <- NEW NewExpression
+              / NEW MemberExpression Arguments
               / NEW MemberExpression
 
 # --- Member Expression (iterative, no left recursion) ---
@@ -577,7 +593,7 @@ RegExpFlags <- [gimsuvdy]*
 
 IdentifierName <- IdentStart IdentPart*
 
-IdentStart <- [a-zA-Z_$]
+IdentStart <- [a-zA-Z_$\200-\377]
             / UnicodeEscapeSequence
 
 IdentPart  <- IdentStart / [0-9]
@@ -604,6 +620,7 @@ ReservedWord <- ( 'break' / 'case' / 'catch' / 'continue' / 'debugger'
 NumericLiteral <- HexIntegerLiteral
                 / OctalIntegerLiteral
                 / BinaryIntegerLiteral
+                / LegacyOctalLiteral
                 / DecimalLiteral
 
 # Decimal: 123, 1.5, .5, 1e10, 1.5e-3, with optional BigInt 'n'
@@ -630,6 +647,9 @@ HexDigit  <- [0-9a-fA-F]
 OctalIntegerLiteral <- '0' [oO] OctalDigits BigIntSuffix? S
 OctalDigits <- OctalDigit (NumericSeparator? OctalDigit)*
 OctalDigit  <- [0-7]
+
+# Legacy octal: 0777 (sloppy mode only, syntax error in strict/modules)
+LegacyOctalLiteral <- '0' [0-9]+ S
 
 # Binary: 0b1010
 BinaryIntegerLiteral <- '0' [bB] BinaryDigits BigIntSuffix? S
@@ -673,12 +693,12 @@ LineContinuation <- '\\' LineTerminatorSequence
 # S is the main spacing rule — consumed after every token
 S <- (WhiteSpace / LineTerminatorSequence / Comment)*
 
-WhiteSpace <- [ \t] / '\013' / '\014'
+WhiteSpace <- [ \t] / '\013' / '\014' / '\302\240' / '\357\273\277'
 
 LineTerminator <- [\n\r]
 LineTerminatorSequence <- '\r\n' / '\r' / '\n'
 
-Comment <- MultiLineComment / SingleLineComment / HashbangComment
+Comment <- MultiLineComment / SingleLineComment
 SingleLineComment <- '//' (!LineTerminator .)* 
 MultiLineComment  <- '/*' (!'*/' .)* '*/'
 HashbangComment   <- '#!' (!LineTerminator .)*
@@ -746,8 +766,12 @@ VOID           <- 'void' !IdentPart S
 WHILE          <- 'while' !IdentPart S
 WITH           <- 'with' !IdentPart S
 YIELD          <- 'yield' !IdentPart S
+USING          <- 'using' !IdentPart S
+AWAIT_USING    <- 'await' !IdentPart S 'using' !IdentPart S
 AS             <- 'as' !IdentPart S
 IN             <- 'in' !IdentPart S
+ACCESSOR       <- 'accessor' !IdentPart S
+ASSERT         <- 'assert' !IdentPart S
 
 # Punctuators — longest match first within each group
 LBRACE   <- '{' S
