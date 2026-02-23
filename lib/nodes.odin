@@ -136,7 +136,9 @@ ErrorNode :: struct {
 }
 
 // EmptyOpNode is a node that performs a zero-width assertion.
-EmptyOpNode :: struct {} //op: syntax.EmptyOp
+EmptyOpNode :: struct {
+	op: EmptyOp,
+}
 
 
 // EmtpyNode represents the empty pattern.

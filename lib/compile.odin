@@ -336,8 +336,7 @@ compile_search_node :: proc(p: ^SearchNode) -> (Program, bool) {
 
 // Compile this node.
 compile_empty_op_node :: proc(p: ^EmptyOpNode) -> (Program, bool) {
-	// Empty{p.op}
-	return Program{Empty{}}, false
+	return Program{Empty{p.op}}, false
 }
 
 // Compile this node.

@@ -1,8 +1,8 @@
 # Pegasus
 
-A fast **PEG (Parsing Expression Grammar)** parser and packrat virtual machine for [Odin](https://odin-lang.org/). Compiles grammars into bytecode, optimizes them, and executes them with selective memoization — fast enough to parse real-world JavaScript files up to 116 KB.
+A fast **PEG (Parsing Expression Grammar)** parser and packrat virtual machine for [Odin](https://odin-lang.org/). Compiles grammars into bytecode, optimizes them, and executes them with selective memoization — fast enough to parse real-world JavaScript files up to 545 KB.
 
-Ships with a **full ES2025 JavaScript grammar** (~195 rules) validated against 75 production files from Node.js, Express, Three.js, Underscore, Prettier, D3, and more.
+Ships with a **full ES2025 JavaScript grammar** (~304 rules) validated against 76 production files (~2.5 MB total) from Node.js, Express, Three.js, Lodash, Underscore, Prettier, D3, and more.
 
 
 ## Installation
@@ -154,7 +154,7 @@ match :: proc(grammar: string, subject: string) -> (bool, int, ^memo.Capture, []
 
 ## JavaScript Grammar
 
-The flagship grammar at `grammars/javascript.peg` is a **complete ES2025 PEG grammar** — ~800 lines, ~200 rules covering the full language:
+The flagship grammar at `grammars/javascript.peg` is a **complete ES2025 PEG grammar** — ~800 lines, ~304 rules covering the full language:
 
 - **Modules** — `import` / `export` with all specifier forms, ES2022 string literal module export names, `import()` with options arg, `with` and `assert` attribute clauses
 - **Declarations** — `let`, `const`, `var`, `using`, `await using`, classes with fields/static blocks/auto-accessors, generators, async generators
@@ -163,32 +163,50 @@ The flagship grammar at `grammars/javascript.peg` is a **complete ES2025 PEG gra
 - **Functions** — arrow functions, async arrows, default parameters, rest parameters, computed property names
 - **Literals** — template literals with nesting, regex literals, BigInt, numeric separators, legacy octal literals
 - **Classes** — decorators, static blocks, auto-accessors (`accessor x = 1`), private fields/methods, computed names
+- **Unicode** — non-ASCII identifiers via UTF-8 byte ranges (`café`, `π`, `日本語`), `\uXXXX` and `\u{XXXXX}` escapes
 
 ### Validated against real-world code
 
-The grammar has been tested against **75 production JavaScript files** (~2 MB total, 1.6 KB – 116 KB) from:
+The grammar has been tested against **76 production JavaScript files** (~2.5 MB total, 1.6 KB – 545 KB) from:
 
 - **Node.js internals** — `path`, `fs`, `net`, `http2`, `streams`, `crypto`, `child_process`, `repl`, `readline`, `url`, CJS/ESM loaders, `buffer`, `events`, `errors`, `zlib`, `dgram`, `worker`, `cluster`, `console`, `timers`
 - **Express.js** — router, app, response
-- **Three.js** — `WebGLRenderer` (106 KB)
+- **Lodash** (545 KB), **Three.js** — `WebGLRenderer` (106 KB)
 - **Underscore.js** (68 KB), **Prettier**, **Moment.js**, **D3**, npm utilities
 
-### Performance notes
+### ASI via `%begin_line`
 
-Two key optimizations keep parsing tractable for large files:
+JavaScript's Automatic Semicolon Insertion (ASI) requires knowing whether a newline occurred between two tokens. Pegasus supports this through the built-in `%begin_line` assertion, which succeeds at the start of input or immediately after a newline character.
+
+The grammar uses `!%begin_line` in the 9 restricted productions where ASI matters:
+
+```peg
+ReturnStatement   <- RETURN (!%begin_line Expression)? EOS
+ThrowStatement    <- THROW !%begin_line Expression EOS
+PostfixExpression <- LeftHandSideExpression (!%begin_line ('++' / '--') S)?
+ArrowFunction     <- ArrowParameters !%begin_line ARROW ConciseBody
+YieldExpression   <- YIELD (!%begin_line STAR? AssignmentExpression)?
+# ... and continue, break, async arrow, async method
+```
+
+This means `return\n42` correctly parses as `return;` followed by `42;`, while `return 42` parses as `return 42;`.
+
+### Performance
+
+Three key optimizations keep parsing tractable for large files:
 
 - **Arrow parameter lookahead** — a balanced-paren scan before `=>` avoids expensive speculative `FormalParameters` parses on every `(expr)`. ~38% faster.
 - **Unified `LeftHandSideExpression`** — merges `CallExpression` / `OptionalExpression` / `NewExpression` into a single rule with a suffix loop, eliminating exponential double-parse. ~42% faster.
+- **Arena allocator** — `match()` allocates into a virtual arena, avoiding per-node allocation overhead. Combined with in-place stack operations and a memo table cap (100K entries), this reduced memory from OOM to 67 MB on Lodash (545 KB) and improved Three.js (106 KB) from 3.4s to 0.06s (57x).
 
-Selective memoization (threshold = 512) keeps memory usage reasonable. Files over ~500 KB may exhaust memory due to unbounded memo table growth.
+Selective memoization (threshold = 512) keeps memory usage reasonable.
 
 ### Known limitations
 
 | # | Gap | Severity | Notes |
 |---|-----|----------|-------|
-| 1 | **Unicode identifiers** | Medium | Only ASCII `[a-zA-Z_$]` and `\uXXXX` escapes. Direct Unicode codepoints (`café`, `π`) rejected. Engine limitation — Pegasus operates byte-by-byte without Unicode category tables. |
-| 2 | **ASI over-permissive** | Low | `EOS` fallback accepts code that should be a syntax error. Restricted productions (`return`, `throw`, `++/--`) are handled correctly, but the general case is an approximation. Accepts invalid code but never rejects valid code. |
-| 3 | **`import.source()`** | Low | Source Phase Imports (Stage 3). Not yet in the spec. |
+| 1 | **ASI over-permissive** | Low | `EOS` fallback accepts code that should be a syntax error. Restricted productions (`return`, `throw`, `++/--`) are handled correctly via `%begin_line`, but the general case is an approximation. Accepts invalid code but never rejects valid code. |
+| 2 | **`import.source()`** | Low | Source Phase Imports (Stage 3). Not yet in the spec. |
 
 
 ## PEG Syntax Reference
@@ -225,6 +243,21 @@ RuleName <- Pattern
 | `(A)` | Grouping |
 | `{ A }` | Capture — record the matched text |
 
+### Built-in assertions
+
+Zero-width assertions that test position without consuming input:
+
+| Syntax | Description |
+|--------|-------------|
+| `%begin_line` | Matches at start of input or immediately after `\n` |
+| `%end_line` | Matches at end of input or immediately before `\n` |
+| `%begin_text` | Matches only at the very start of input |
+| `%end_text` | Matches only at the very end of input |
+| `%word_boundary` | Matches at a word/non-word boundary |
+| `%no_word_boundary` | Matches where there is no word boundary |
+
+These are useful for line-sensitive grammars. For example, the JavaScript grammar uses `!%begin_line` to detect newlines between tokens for ASI (Automatic Semicolon Insertion).
+
 ### Comments
 
 Lines starting with `#` are comments.
@@ -234,7 +267,7 @@ Lines starting with `#` are comments.
 
 | File | Description |
 |------|-------------|
-| `grammars/javascript.peg` | **Full ES2025 JavaScript** — ~190 rules, validated against 69 production files |
+| `grammars/javascript.peg` | **Full ES2025 JavaScript** — ~304 rules, validated against 76 production files |
 | `grammars/peg.peg` | PEG meta-grammar — Pegasus can parse its own grammar format |
 | `grammars/arith.peg` | Arithmetic expressions with operator precedence |
 

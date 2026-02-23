@@ -118,7 +118,29 @@ compile_re :: proc(root: ^memo.Capture, s: string) -> (p: Pattern) {
 		}
 		p = set(chrst)
 	case .Identifier:
-		p = non_term(parseId(root, s))
+		name := parseId(root, s)
+		if len(name) > 1 && name[0] == '%' {
+			// Built-in zero-width assertions: %begin_line, %end_line, etc.
+			builtin := name[1:]
+			switch builtin {
+			case "begin_line":
+				p = emptyOp(.BeginLine)
+			case "end_line":
+				p = emptyOp(.EndLine)
+			case "begin_text":
+				p = emptyOp(.BeginText)
+			case "end_text":
+				p = emptyOp(.EndText)
+			case "word_boundary":
+				p = emptyOp(.WordBoundary)
+			case "not_word_boundary":
+				p = emptyOp(.NoWordBoundary)
+			case:
+				panic(fmt.tprintf("unknown built-in assertion: %s", name))
+			}
+		} else {
+			p = non_term(name)
+		}
 	}
 	return p
 }

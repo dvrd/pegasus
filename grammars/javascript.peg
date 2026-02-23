@@ -106,11 +106,11 @@ ForHead <- VAR VariableDeclaration IN Expression
 ForBinding <- BindingPattern / BindingIdentifier
 
 # --- Continue / Break ---
-ContinueStatement <- CONTINUE (!LineTerminator LabelIdentifier)? EOS
-BreakStatement    <- BREAK (!LineTerminator LabelIdentifier)? EOS
+ContinueStatement <- CONTINUE (!%begin_line LabelIdentifier)? EOS
+BreakStatement    <- BREAK (!%begin_line LabelIdentifier)? EOS
 
 # --- Return ---
-ReturnStatement <- RETURN (!LineTerminator Expression)? EOS
+ReturnStatement <- RETURN (!%begin_line Expression)? EOS
 
 # --- With ---
 WithStatement <- WITH LPAREN Expression RPAREN Statement
@@ -126,7 +126,7 @@ DefaultClause <- DEFAULT COLON StatementList?
 LabelledStatement <- LabelIdentifier COLON (FunctionDeclaration / Statement)
 
 # --- Throw ---
-ThrowStatement <- THROW !LineTerminator Expression EOS
+ThrowStatement <- THROW !%begin_line Expression EOS
 
 # --- Try ---
 TryStatement <- TRY Block (Catch Finally? / Finally)
@@ -205,7 +205,7 @@ ClassElement <- SEMI
 
 ClassStaticBlock <- LBRACE StatementList? RBRACE
 
-MethodDefinition <- ASYNC !LineTerminator STAR? ClassElementName LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
+MethodDefinition <- ASYNC !%begin_line STAR? ClassElementName LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
                   / STAR ClassElementName LPAREN FormalParameters RPAREN LBRACE FunctionBody RBRACE
                   / GET ClassElementName LPAREN RPAREN LBRACE FunctionBody RBRACE
                   / SET ClassElementName LPAREN FormalParameter RPAREN LBRACE FunctionBody RBRACE
@@ -293,7 +293,7 @@ AssignmentExpression <- AsyncArrowFunction
                       / LeftHandSideExpression AssignmentOperator AssignmentExpression
                       / ConditionalExpression
 
-AsyncArrowFunction <- ASYNC !LineTerminator AsyncArrowParameters !LineTerminator ARROW AsyncConciseBody
+AsyncArrowFunction <- ASYNC !%begin_line AsyncArrowParameters !%begin_line ARROW AsyncConciseBody
 
 AsyncArrowParameters <- BindingIdentifier
                       / &(LPAREN ArrowParamScan RPAREN [ \t\n\r]* '=>') LPAREN FormalParameters RPAREN
@@ -301,7 +301,7 @@ AsyncArrowParameters <- BindingIdentifier
 AsyncConciseBody <- !LBRACE AssignmentExpression
                   / LBRACE AsyncFunctionBody RBRACE
 
-ArrowFunction <- ArrowParameters !LineTerminator ARROW ConciseBody
+ArrowFunction <- ArrowParameters !%begin_line ARROW ConciseBody
 
 ArrowParameters <- BindingIdentifier
                  / &(LPAREN ArrowParamScan RPAREN [ \t\n\r]* '=>') LPAREN FormalParameters RPAREN
@@ -330,7 +330,7 @@ AssignmentOperator <- '>>>=' S
                     / '=' !'=' S
 
 # --- Yield ---
-YieldExpression <- YIELD (!LineTerminator STAR? AssignmentExpression)?
+YieldExpression <- YIELD (!%begin_line STAR? AssignmentExpression)?
 
 # --- Conditional (ternary) ---
 ConditionalExpression <- ShortCircuitExpression (QUESTION AssignmentExpression COLON AssignmentExpression)?
@@ -392,7 +392,7 @@ UnaryExpression <- DELETE UnaryExpression
                  / PostfixExpression
 
 # --- Postfix ---
-PostfixExpression <- LeftHandSideExpression (!LineTerminator ('++' / '--') S)?
+PostfixExpression <- LeftHandSideExpression (!%begin_line ('++' / '--') S)?
 
 # --- Left-Hand Side ---
 # Unified: parse base once, then consume all call/member/optional-chain suffixes.

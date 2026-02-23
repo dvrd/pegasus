@@ -184,7 +184,7 @@ re_grammar_init :: proc() {
 		set(
 			charset.add(
 				charset.add(charset.range('a', 'z'), charset.range('A', 'Z')),
-				charset.new_charset([]byte{'_'}),
+				charset.new_charset([]byte{'_', '%'}), // % for built-in assertions like %begin_line
 			),
 		),
 		int(NonTerm.IdentStart),

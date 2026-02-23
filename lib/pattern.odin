@@ -246,11 +246,10 @@ search :: proc(p: Pattern, allocator := context.allocator) -> (np: Pattern) {
 	return
 }
 
-// (op: syntax.EmptyOp)?
-emptyOp :: proc(allocator := context.allocator) -> (np: Pattern) {
-	np = new(EmptyOpNode, allocator) // Op: op
+emptyOp :: proc(op: EmptyOp, allocator := context.allocator) -> (np: Pattern) {
+	np = new(EmptyOpNode, allocator)
+	np.(^EmptyOpNode).op = op
 	return
-
 }
 
 // NonTerm builds an unresolved non-terminal with a given name.
@@ -357,7 +356,7 @@ test_pattern_constructors :: proc(t: ^testing.T) {
 	testing.expect(t, ok_search, "search should produce SearchNode")
 
 	// emptyOp
-	p_empty := emptyOp()
+	p_empty := emptyOp(.BeginLine)
 	_, ok_empty := p_empty.(^EmptyOpNode)
 	testing.expect(t, ok_empty, "emptyOp should produce EmptyOpNode")
 
