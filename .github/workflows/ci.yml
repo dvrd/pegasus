@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  ODIN_VERSION: dev-2026-02
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Odin
+        id: cache-odin
+        uses: actions/cache@v4
+        with:
+          path: odin-install
+          key: odin-${{ env.ODIN_VERSION }}-linux-amd64
+
+      - name: Install Odin
+        if: steps.cache-odin.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" -o odin.tar.gz
+          mkdir -p odin-install
+          tar xzf odin.tar.gz -C odin-install --strip-components=1
+          rm odin.tar.gz
+
+      - name: Add Odin to PATH
+        run: |
+          chmod +x odin-install/odin
+          echo "$PWD/odin-install" >> $GITHUB_PATH
+
+      - name: Verify Odin
+        run: odin version
+
+      - name: Run unit tests (188 tests)
+        run: odin test lib -collection:pegasus=./lib -all-packages
+
+      - name: Build optimized binary
+        run: |
+          mkdir -p bin
+          odin build lib -collection:pegasus=./lib -o:speed -out:bin/pegasus
+
+      - name: JS regression tests (76 files)
+        run: |
+          count=0
+          fail=0
+          for f in test/fixtures/js/*.js; do
+            size=$(wc -c < "$f" | tr -d ' ')
+            if [ "$size" -lt 100 ]; then continue; fi
+            count=$((count+1))
+            base=$(basename "$f")
+            timeout 120 ./bin/pegasus grammars/javascript.peg --file "$f" --quiet 2>/dev/null
+            if [ $? -ne 0 ]; then
+              fail=$((fail+1))
+              echo "::error::FAIL: $base ($size bytes)"
+            fi
+          done
+          echo ""
+          echo "=== JS Regression Results ==="
+          echo "Tested: $count files"
+          echo "Failed: $fail files"
+          if [ "$fail" -gt 0 ]; then
+            exit 1
+          fi
