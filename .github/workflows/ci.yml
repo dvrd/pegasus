@@ -7,7 +7,9 @@ on:
     branches: [main]
 
 env:
-  ODIN_VERSION: dev-2026-02
+  # Pin to a known-good Odin commit (matches our local dev build).
+  # Monthly release binaries lag behind and have breaking os package changes.
+  ODIN_COMMIT: 109d68d0229266627c014e2ad2b8eb1ae45d4b7b
 
 jobs:
   test:
@@ -18,25 +20,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Odin
+      - name: Cache Odin build
         id: cache-odin
         uses: actions/cache@v4
         with:
-          path: odin-install
-          key: odin-${{ env.ODIN_VERSION }}-linux-amd64
+          path: ~/odin
+          key: odin-build-${{ env.ODIN_COMMIT }}
 
-      - name: Install Odin
+      - name: Install LLVM
         if: steps.cache-odin.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" -o odin.tar.gz
-          mkdir -p odin-install
-          tar xzf odin.tar.gz -C odin-install --strip-components=1
-          rm odin.tar.gz
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq llvm-18 clang-18
+
+      - name: Build Odin from source
+        if: steps.cache-odin.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://github.com/odin-lang/Odin/archive/${ODIN_COMMIT}.tar.gz" -o odin-src.tar.gz
+          mkdir -p ~/odin
+          tar xzf odin-src.tar.gz -C ~/odin --strip-components=1
+          rm odin-src.tar.gz
+          cd ~/odin
+          LLVM_CONFIG=llvm-config-18 make release
+        timeout-minutes: 10
 
       - name: Add Odin to PATH
-        run: |
-          chmod +x odin-install/odin
-          echo "$PWD/odin-install" >> $GITHUB_PATH
+        run: echo "$HOME/odin" >> $GITHUB_PATH
 
       - name: Verify Odin
         run: odin version
